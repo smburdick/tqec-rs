@@ -1,6 +1,7 @@
 use rust_3d::Point3D;
 
-enum Basis {
+#[derive(Debug, Clone, Copy)]
+pub enum Basis {
   X,
   Z,
 }
@@ -9,6 +10,12 @@ pub struct ZXCube {
   x: Basis,
   y: Basis,
   z: Basis,
+}
+
+impl ZXCube {
+  pub fn as_tuple(&self) -> (Basis, Basis, Basis) {
+    return (self.x, self.y, self.z);
+  }
 }
 
 pub struct Port {
