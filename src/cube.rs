@@ -6,6 +6,15 @@ pub enum Basis {
   Z,
 }
 
+impl Basis {
+  pub fn flipped(&self) -> Basis {
+    match self {
+      Basis::X => Basis::Z,
+      Basis::Z => Basis::X
+    }
+  }
+}
+
 pub struct ZXCube {
   x: Basis,
   y: Basis,
