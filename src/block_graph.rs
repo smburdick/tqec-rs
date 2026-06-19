@@ -1,11 +1,12 @@
 use std::collections::HashMap;
 use rust_3d::Point3D;
-use petgraph::graph::UnGraph;
+use petgraph::graph::{NodeIndex, UnGraph};
 use crate::cube::Cube;
 
 pub struct BlockGraph {
     name: String,
     graph: UnGraph<Cube, ()>,
+    node_indices: HashMap<Cube, NodeIndex>,
     ports: HashMap<String, Point3D>
 }
 
@@ -14,9 +15,11 @@ impl BlockGraph {
     pub fn new(name: &str) -> Self {
         let graph: UnGraph<Cube, ()> = UnGraph::default();
         let ports: HashMap<String, Point3D> = HashMap::new();
+        let node_indices: HashMap<Cube, NodeIndex> = HashMap::new();
         Self {
             name: name.to_string(),
             graph: graph,
+            node_indices: node_indices,
             ports: ports
         }
     }
@@ -52,6 +55,16 @@ impl BlockGraph {
     pub fn spacetime_volume(&self) -> f64 {
         return 0.0; // TODO: need YHalfCube
     }
+
+    pub fn add_cube(&mut self, cube: Cube) {
+        let idx= self.graph.add_node(cube.clone());
+        self.node_indices.insert(cube, idx);
+    }
+
+    // pub fn degree(&self, cube: Cube) -> usize {
+    //     let idx: NodeIndex = self.node_indices.entry(cube);
+    //     return self.graph.edges(cube).count();
+    // }
 
 }
 

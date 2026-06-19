@@ -38,12 +38,12 @@ pub struct YHalfCube {
 
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Hash, Clone, Copy, PartialEq, Eq)]
 enum CubeKind {
   ZXCube, Port, YHalfCube
 }
 
-
+#[derive(PartialEq, Eq, Hash, Debug, Clone)]
 pub struct Cube {
   position: Point3D,
   kind: CubeKind,
