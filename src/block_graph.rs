@@ -61,10 +61,13 @@ impl BlockGraph {
         self.node_indices.insert(cube, idx);
     }
 
-    // pub fn degree(&self, cube: Cube) -> usize {
-    //     let idx: NodeIndex = self.node_indices.entry(cube);
-    //     return self.graph.edges(cube).count();
-    // }
+    pub fn degree(&self, cube: Cube) -> usize {
+        let idx: Option<&NodeIndex> = self.node_indices.get(&cube);
+        match idx {
+            Some(val) => self.graph.neighbors(*val).count(),
+            None => 0
+        }
+    }
 
 }
 
