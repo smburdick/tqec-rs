@@ -1,4 +1,3 @@
-use rust_3d::Point3D;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Basis {
@@ -39,13 +38,12 @@ pub struct YHalfCube {
 }
 
 #[derive(Debug, Hash, Clone, Copy, PartialEq, Eq)]
-enum CubeKind {
+pub enum CubeKind {
   ZXCube, Port, YHalfCube
 }
 
 #[derive(PartialEq, Eq, Hash, Debug, Clone)]
 pub struct Cube {
-  position: Point3D,
   kind: CubeKind,
   label: String
 }

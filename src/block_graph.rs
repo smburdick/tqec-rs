@@ -1,43 +1,49 @@
-use std::collections::HashMap;
-use rust_3d::Point3D;
+use std::{collections::HashMap, string};
 use petgraph::graph::{NodeIndex, UnGraph};
-use crate::cube::Cube;
+
+use crate::cube::{Cube, CubeKind};
+
+#[derive(PartialEq, Eq, Hash, Debug, Clone)]
+pub struct CubePosition {
+    x: i32,
+    y: i32,
+    z: i32
+}
 
 pub struct BlockGraph {
     name: String,
-    graph: UnGraph<Cube, ()>,
-    node_indices: HashMap<Cube, NodeIndex>,
-    ports: HashMap<String, Point3D>
+    graph: UnGraph<CubePosition, ()>,
+    node_indices: HashMap<CubePosition, NodeIndex>,
+    cube_data: HashMap<CubePosition, Cube>,
+    ports: HashMap<String, CubePosition>
 }
 
 impl BlockGraph {
 
     pub fn new(name: &str) -> Self {
-        let graph: UnGraph<Cube, ()> = UnGraph::default();
-        let ports: HashMap<String, Point3D> = HashMap::new();
-        let node_indices: HashMap<Cube, NodeIndex> = HashMap::new();
         Self {
             name: name.to_string(),
-            graph: graph,
-            node_indices: node_indices,
-            ports: ports
+            graph: UnGraph::default(),
+            cube_data: HashMap::new(),
+            node_indices: HashMap::new(),
+            ports: HashMap::new()
         }
     }
 
     pub fn num_cubes(&self) -> usize {
-        return self.graph.node_count();
+        self.graph.node_count()
     }
 
     pub fn num_pipes(&self) -> usize {
-        return self.graph.edge_count();
+        self.graph.edge_count()
     }
 
     pub fn num_ports(&self) -> usize {
-        return self.ports.len();
+        self.ports.len()
     }
 
     pub fn num_y_half_cubes(&self) -> usize {
-        return 0; // TODO:
+        0 // TODO:
     }
 
     pub fn set_name(&mut self, new_name: String) {
@@ -45,28 +51,36 @@ impl BlockGraph {
     }
 
     pub fn get_name(&self) -> String {
-        return self.name.clone();
+        self.name.clone()
     }
 
     pub fn is_open(&self) -> bool {
-        return self.num_ports() > 0;
+        self.num_ports() > 0
     }
 
     pub fn spacetime_volume(&self) -> f64 {
-        return 0.0; // TODO: need YHalfCube
+        0.0 // TODO: need YHalfCube
     }
 
-    pub fn add_cube(&mut self, cube: Cube) {
-        let idx= self.graph.add_node(cube.clone());
-        self.node_indices.insert(cube, idx);
+    pub fn add_cube(&mut self, pos: CubePosition, kind: CubeKind, label: String) {
+        // add position to the graph
+        let idx= self.graph.add_node(pos.clone());
+        self.node_indices.insert(pos, idx);
+        // TODO: update cube metadata corresponding to position
     }
 
-    pub fn degree(&self, cube: Cube) -> usize {
-        let idx: Option<&NodeIndex> = self.node_indices.get(&cube);
+    pub fn degree(&self, pos: CubePosition) -> usize {
+        let idx: Option<&NodeIndex> = self.node_indices.get(&pos);
         match idx {
             Some(val) => self.graph.neighbors(*val).count(),
             None => 0
         }
+    }
+
+    pub fn leaves(&self) -> Vec<CubePosition> {
+        let leaves: Vec<CubePosition> = Vec::new();
+        // self.graph.
+        leaves
     }
 
 }
