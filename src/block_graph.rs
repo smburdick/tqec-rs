@@ -1,9 +1,9 @@
-use std::{collections::HashMap, string};
+use std::collections::HashMap;
 use petgraph::graph::{NodeIndex, UnGraph};
 
 use crate::cube::{Cube, CubeKind};
 
-#[derive(PartialEq, Eq, Hash, Debug, Clone)]
+#[derive(PartialEq, Eq, Hash, Debug, Copy, Clone)]
 pub struct CubePosition {
     x: i32,
     y: i32,
@@ -51,7 +51,7 @@ impl BlockGraph {
     }
 
     pub fn num_y_half_cubes(&self) -> usize {
-        0 // TODO:
+        self.cube_data.values().filter(|cube| cube.is_y_half_cube()).count()
     }
 
     pub fn set_name(&mut self, new_name: String) {
@@ -67,7 +67,8 @@ impl BlockGraph {
     }
 
     pub fn spacetime_volume(&self) -> f64 {
-        0.0 // TODO: need YHalfCube
+        ((self.num_cubes() - self.num_ports() - self.num_y_half_cubes()) as f64)
+            / 2.0
     }
 
     pub fn add_cube(&mut self, pos: CubePosition, kind: CubeKind, label: String) {
@@ -86,9 +87,10 @@ impl BlockGraph {
     }
 
     pub fn leaves(&self) -> Vec<CubePosition> {
-        let leaves: Vec<CubePosition> = Vec::new();
-        // TODO: filter nodes that have 0 outgoing edges (?)
-        leaves
+        self.cube_data.keys()
+            .cloned()
+            .filter(|pos| self.degree(*pos) == 1)
+            .collect()
     }
 
 }
