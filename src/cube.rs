@@ -49,6 +49,11 @@ pub struct Cube {
 }
 
 impl Cube {
+  pub fn new(kind: CubeKind, label: String) -> Cube {
+    Self {
+      kind, label
+    }
+  }
   pub fn is_zx_cube(&self) -> bool {
     matches!(self.kind, CubeKind::ZXCube)
   }

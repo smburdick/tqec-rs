@@ -10,6 +10,14 @@ pub struct CubePosition {
     z: i32
 }
 
+impl CubePosition {
+    pub fn new(x: i32, y: i32, z: i32) -> CubePosition {
+        Self {
+            x: x, y: y, z: z
+        }
+    }
+}
+
 pub struct BlockGraph {
     name: String,
     graph: UnGraph<CubePosition, ()>,
@@ -63,10 +71,10 @@ impl BlockGraph {
     }
 
     pub fn add_cube(&mut self, pos: CubePosition, kind: CubeKind, label: String) {
-        // add position to the graph
-        let idx= self.graph.add_node(pos.clone());
-        self.node_indices.insert(pos, idx);
-        // TODO: update cube metadata corresponding to position
+        let idx: NodeIndex = self.graph.add_node(pos.clone());
+        self.node_indices.insert(pos.clone(), idx);
+        let cube: Cube = Cube::new(kind, label.clone());
+        self.cube_data.insert(pos.clone(), cube);
     }
 
     pub fn degree(&self, pos: CubePosition) -> usize {
@@ -79,7 +87,7 @@ impl BlockGraph {
 
     pub fn leaves(&self) -> Vec<CubePosition> {
         let leaves: Vec<CubePosition> = Vec::new();
-        // self.graph.
+        // TODO: filter nodes that have 0 outgoing edges (?)
         leaves
     }
 
