@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use petgraph::graph::{NodeIndex, UnGraph};
+use dae_parser::*;
 
 use crate::cube::{Cube, CubeKind};
 
@@ -35,6 +36,17 @@ impl BlockGraph {
             cube_data: HashMap::new(),
             node_indices: HashMap::new(),
             ports: HashMap::new()
+        }
+    }
+
+    pub fn from_dae_file(filepath: &str) -> Result<Self, Error> {
+        let contents: Result<Document, Error> = Document::from_file(filepath);
+        match contents {
+            Ok(val) => {
+                // let doc = contents.unwrap();
+                Ok(BlockGraph::new("Example"))
+            },
+            Err(e) => Err(e),
         }
     }
 
