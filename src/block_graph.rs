@@ -1,6 +1,5 @@
-use std::collections::HashMap;
+use std::{collections::{HashMap, btree_map::ValuesMut}, error::Error, fs::File, io::{BufRead, BufReader}, path::Path};
 use petgraph::graph::{NodeIndex, UnGraph};
-use dae_parser::*;
 
 use crate::cube::{Cube, CubeKind};
 
@@ -29,9 +28,9 @@ pub struct BlockGraph {
 
 impl BlockGraph {
 
-    pub fn new(name: &str) -> Self {
+    pub fn new(name: String) -> Self {
         Self {
-            name: name.to_string(),
+            name: name,
             graph: UnGraph::default(),
             cube_data: HashMap::new(),
             node_indices: HashMap::new(),
@@ -39,14 +38,58 @@ impl BlockGraph {
         }
     }
 
-    pub fn from_dae_file(filepath: &str) -> Result<Self, Error> {
-        let contents: Result<Document, Error> = Document::from_file(filepath);
-        match contents {
-            Ok(val) => {
-                // let doc = contents.unwrap();
-                Ok(BlockGraph::new("Example"))
+    // pub fn from_dae_file(filepath: &str) -> Result<Self, Error> {
+    //     let contents: Result<Document, Error> = Document::from_file(filepath);
+    //     match contents {
+    //         Ok(val) => {
+    //             // let doc = contents.unwrap();
+    //             Ok(BlockGraph::new("Example".to_string()))
+    //         },
+    //         Err(e) => Err(e),
+    //     }
+    // }
+
+    pub fn from_bgraph_file(filepath: &str) -> Result<Self, String> {
+        // Based on https://tqec.github.io/tqec/user_guide/bgraph.html
+        let path = Path::new(filepath);
+        let file = File::open(&path);
+        let mut to_return = Self::new(format!("block_graph[{}]", filepath));
+        match file {
+            Ok(goodfile) => {
+                let reader = BufReader::new(goodfile);
+                let mut parse_cubes = false;
+                let mut parse_pipes = false;
+                for (index, line) in reader.lines().enumerate() {
+                    // TODO: skip header and metadata
+                    let _line = line.unwrap();
+                    if _line.is_empty() {
+                        continue;
+                    }
+                    if (parse_cubes) {
+                        let items: Vec<&str> = _line.split(";").collect();
+                        // if items.len() != 6 {
+                        //     Err(String::from("Incorrect cube spec"))
+                        // }
+                        let cube_id: u32 = items[0].parse().unwrap();
+                        // TODO: when cube is added to the graph, map its cube
+                        // id to its NodeIndex, then use that to link up the pipes
+                        let x_coord: i32 = items[1].parse().unwrap();
+                        let y_coord: i32 = items[2].parse().unwrap();
+                        let z_coord: i32 = items[3].parse().unwrap();
+                        let kind: String = items[4].to_lowercase();
+                        let annotation: &str = items[5];
+                    } else if (parse_pipes) {
+
+                    } else if _line.starts_with("CUBE") {
+                        parse_cubes = true; // start parsing cubes
+                    } else if _line.starts_with("PIPE") {
+                        parse_pipes = true; // start parsing pipes
+                        parse_cubes = false;
+                    }
+                }
+                Ok(to_return)
             },
-            Err(e) => Err(e),
+            Err(e) => Err(e.to_string()),
         }
     }
 

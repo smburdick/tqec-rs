@@ -1,8 +1,21 @@
+use std::{error::Error, str::FromStr};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Basis {
   X,
   Z,
+}
+
+impl FromStr for Basis {
+    type Err = &'static str;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "X" => Ok(Basis::X),
+            "Z" => Ok(Basis::Z),
+            _ => Err("invalid basis"),
+        }
+    }
 }
 
 impl Basis {
@@ -20,13 +33,22 @@ pub struct ZXCube {
   z: Basis,
 }
 
+pub static ALLOWED_CUBES: &[&str]  = &["ZXZ", "XZZ", "ZXX", "XZX", "XXZ", "ZZX"];
+
 impl ZXCube {
   pub fn as_tuple(&self) -> (Basis, Basis, Basis) {
-    return (self.x, self.y, self.z);
+    (self.x, self.y, self.z)
   }
   pub fn is_spatial(&self) -> bool {
-    return self.x == self.y;
+    self.x == self.y
   }
+  // pub fn from_str(&self, rep: &str) -> Result<Self, Error> {
+  //   if ALLOWED_CUBES.contains(rep) {
+
+  //   } else {
+
+  //   }
+  // }
 }
 
 pub struct Port {

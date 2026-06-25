@@ -4,5 +4,5 @@ pub mod cube;
 pub mod block_graph;
 
 fn main() {
-  let bg = BlockGraph::from_dae_file("logical_cnot.dae");
+  let bg = BlockGraph::from_bgraph_file("logical_cnot.dae");
 }
