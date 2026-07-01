@@ -42,13 +42,18 @@ impl ZXCube {
   pub fn is_spatial(&self) -> bool {
     self.x == self.y
   }
-  // pub fn from_str(&self, rep: &str) -> Result<Self, Error> {
-  //   if ALLOWED_CUBES.contains(rep) {
-
-  //   } else {
-
-  //   }
-  // }
+  pub fn from_str(&self, rep: &str) -> Result<Self, &'static str> {
+    if ALLOWED_CUBES.contains(&rep) {
+      let mut chars = rep.chars();
+      Ok(Self {
+        x: Basis::from_str(&chars.next().unwrap().to_string())?,
+        y: Basis::from_str(&chars.next().unwrap().to_string())?,
+        z: Basis::from_str(&chars.next().unwrap().to_string())?
+      })
+    } else {
+      Err("invalid")
+    }
+  }
 }
 
 pub struct Port {
