@@ -1,7 +1,7 @@
 use std::{collections::{HashMap, btree_map::ValuesMut}, error::Error, fs::File, io::{BufRead, BufReader}, path::Path};
-use petgraph::graph::{NodeIndex, UnGraph};
+use petgraph::{Graph, Undirected, graph::{NodeIndex, UnGraph}};
 
-use crate::cube::{Cube, CubeKind};
+use crate::cube::{Cube, CubeKind, PipeKind, ZXCube};
 
 #[derive(PartialEq, Eq, Hash, Debug, Copy, Clone)]
 pub struct CubePosition {
@@ -20,7 +20,7 @@ impl CubePosition {
 
 pub struct BlockGraph {
     name: String,
-    graph: UnGraph<CubePosition, ()>,
+    graph: Graph<CubePosition, PipeKind, Undirected>,
     node_indices: HashMap<CubePosition, NodeIndex>,
     cube_data: HashMap<CubePosition, Cube>,
     ports: HashMap<String, CubePosition>
@@ -59,6 +59,7 @@ impl BlockGraph {
                 let reader = BufReader::new(goodfile);
                 let mut parse_cubes = false;
                 let mut parse_pipes = false;
+                let mut cubeIdToNodeIndex: HashMap<u32, NodeIndex> = HashMap::new();
                 for (index, line) in reader.lines().enumerate() {
                     // TODO: skip header and metadata
                     let _line = line.unwrap();
@@ -77,9 +78,14 @@ impl BlockGraph {
                         let y_coord: i32 = items[2].parse().unwrap();
                         let z_coord: i32 = items[3].parse().unwrap();
                         let kind: String = items[4].to_lowercase();
+                        let cube = ZXCube::from_str(&kind)?;
+                        let pos: CubePosition = CubePosition::new(x_coord, y_coord, z_coord);
                         let annotation: &str = items[5];
+                        let idx = to_return.graph.add_node(pos);
+                        // to_return.cube_data.insert(pos, cube); // FIXME: 
+                        cubeIdToNodeIndex.insert(cube_id, idx);
                     } else if (parse_pipes) {
-
+                        let items: Vec<&str> = _line.split(";").collect();
                     } else if _line.starts_with("CUBE") {
                         parse_cubes = true; // start parsing cubes
                     } else if _line.starts_with("PIPE") {

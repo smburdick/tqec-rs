@@ -42,7 +42,7 @@ impl ZXCube {
   pub fn is_spatial(&self) -> bool {
     self.x == self.y
   }
-  pub fn from_str(&self, rep: &str) -> Result<Self, &'static str> {
+  pub fn from_str(rep: &str) -> Result<Self, &'static str> {
     if ALLOWED_CUBES.contains(&rep) {
       let mut chars = rep.chars();
       Ok(Self {
@@ -90,4 +90,26 @@ impl Cube {
   pub fn is_y_half_cube(&self) -> bool {
     matches!(self.kind, CubeKind::YHalfCube)
   }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PipeKind {
+    x: Basis,
+    y: Basis,
+    z: Basis,
+    has_hadamard: bool
+}
+
+impl FromStr for PipeKind {
+    type Err = &'static str;
+
+    fn from_str(from: &str) -> Result<Self, Self::Err>  {
+      let uppercase = from.to_uppercase();
+      let mut _from = uppercase.chars();
+      let x = Basis::from_str(&_from.next().unwrap().to_string()).unwrap();
+      let y = Basis::from_str(&_from.next().unwrap().to_string()).unwrap();
+      let z = Basis::from_str(&_from.next().unwrap().to_string()).unwrap();
+      let has_hadamard = _from.next().unwrap().to_string().eq("H");
+      Ok(Self {x: x, y: y, z: z, has_hadamard: has_hadamard})
+   }
 }
