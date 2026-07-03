@@ -27,6 +27,7 @@ impl Basis {
   }
 }
 
+#[derive(Debug, Clone)]
 pub struct ZXCube {
   x: Basis,
   y: Basis,
@@ -56,51 +57,53 @@ impl ZXCube {
   }
 }
 
-pub struct Port {
+// pub struct Port {
 
+// }
+
+// pub struct YHalfCube {
+
+// }
+
+// #[derive(Debug, Hash, Clone, Copy, PartialEq, Eq)]
+// pub enum CubeKind {
+//   ZXCube, Port, YHalfCube
+// }
+
+
+#[derive(Debug, Clone)]
+pub enum Cube {
+  ZX(ZXCube)
+  // Port(Port),
+  // YHalf(YHalfCube)
 }
 
-pub struct YHalfCube {
-
-}
-
-#[derive(Debug, Hash, Clone, Copy, PartialEq, Eq)]
-pub enum CubeKind {
-  ZXCube, Port, YHalfCube
-}
-
-#[derive(PartialEq, Eq, Hash, Debug, Clone)]
-pub struct Cube {
-  kind: CubeKind,
-  label: String
-}
-
-impl Cube {
-  pub fn new(kind: CubeKind, label: String) -> Cube {
-    Self {
-      kind, label
-    }
-  }
-  pub fn is_zx_cube(&self) -> bool {
-    matches!(self.kind, CubeKind::ZXCube)
-  }
-  pub fn is_port(&self) -> bool {
-    matches!(self.kind, CubeKind::Port)
-  }
-  pub fn is_y_half_cube(&self) -> bool {
-    matches!(self.kind, CubeKind::YHalfCube)
-  }
-}
+// impl Cube {
+//   pub fn new(kind: CubeKind, label: String) -> Cube {
+//     Self {
+//       kind, label
+//     }
+//   }
+//   pub fn is_zx_cube(&self) -> bool {
+//     matches!(self.kind, CubeKind::ZXCube)
+//   }
+//   pub fn is_port(&self) -> bool {
+//     matches!(self.kind, CubeKind::Port)
+//   }
+//   pub fn is_y_half_cube(&self) -> bool {
+//     matches!(self.kind, CubeKind::YHalfCube)
+//   }
+// }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct PipeKind {
+pub struct Pipe {
     x: Basis,
     y: Basis,
     z: Basis,
     has_hadamard: bool
 }
 
-impl FromStr for PipeKind {
+impl FromStr for Pipe {
     type Err = &'static str;
 
     fn from_str(from: &str) -> Result<Self, Self::Err>  {

@@ -1,7 +1,7 @@
-use std::{collections::{HashMap, btree_map::ValuesMut}, error::Error, fs::File, io::{BufRead, BufReader}, path::Path};
+use std::{collections::HashMap, fs::File, io::{BufRead, BufReader}, path::Path};
 use petgraph::{Graph, Undirected, graph::{NodeIndex, UnGraph}};
 
-use crate::cube::{Cube, CubeKind, PipeKind, ZXCube};
+use crate::cube::{Cube, Pipe, ZXCube};
 
 #[derive(PartialEq, Eq, Hash, Debug, Copy, Clone)]
 pub struct CubePosition {
@@ -20,7 +20,7 @@ impl CubePosition {
 
 pub struct BlockGraph {
     name: String,
-    graph: Graph<CubePosition, PipeKind, Undirected>,
+    graph: Graph<CubePosition, Pipe, Undirected>,
     node_indices: HashMap<CubePosition, NodeIndex>,
     cube_data: HashMap<CubePosition, Cube>,
     ports: HashMap<String, CubePosition>
@@ -77,12 +77,12 @@ impl BlockGraph {
                         let x_coord: i32 = items[1].parse().unwrap();
                         let y_coord: i32 = items[2].parse().unwrap();
                         let z_coord: i32 = items[3].parse().unwrap();
-                        let kind: String = items[4].to_lowercase();
-                        let cube = ZXCube::from_str(&kind)?;
+                        let kind: String = items[4].to_uppercase();
+                        let zx_cube = Cube::ZX(ZXCube::from_str(&kind)?);
                         let pos: CubePosition = CubePosition::new(x_coord, y_coord, z_coord);
                         let annotation: &str = items[5];
                         let idx = to_return.graph.add_node(pos);
-                        // to_return.cube_data.insert(pos, cube); // FIXME: 
+                        to_return.cube_data.insert(pos, zx_cube); // FIXME: cube need be polymorphic.
                         cubeIdToNodeIndex.insert(cube_id, idx);
                     } else if (parse_pipes) {
                         let items: Vec<&str> = _line.split(";").collect();
@@ -111,9 +111,9 @@ impl BlockGraph {
         self.ports.len()
     }
 
-    pub fn num_y_half_cubes(&self) -> usize {
-        self.cube_data.values().filter(|cube| cube.is_y_half_cube()).count()
-    }
+    // pub fn num_y_half_cubes(&self) -> usize {
+    //     self.cube_data.values().filter(|cube| cube.is_y_half_cube()).count()
+    // }
 
     pub fn set_name(&mut self, new_name: String) {
         self.name = new_name;
@@ -127,15 +127,14 @@ impl BlockGraph {
         self.num_ports() > 0
     }
 
-    pub fn spacetime_volume(&self) -> f64 {
-        ((self.num_cubes() - self.num_ports() - self.num_y_half_cubes()) as f64)
-            / 2.0
-    }
+    // pub fn spacetime_volume(&self) -> f64 {
+    //     ((self.num_cubes() - self.num_ports() - self.num_y_half_cubes()) as f64)
+    //         / 2.0
+    // }
 
-    pub fn add_cube(&mut self, pos: CubePosition, kind: CubeKind, label: String) {
+    pub fn add_cube(&mut self, pos: CubePosition, cube: Cube, label: String) {
         let idx: NodeIndex = self.graph.add_node(pos.clone());
         self.node_indices.insert(pos.clone(), idx);
-        let cube: Cube = Cube::new(kind, label.clone());
         self.cube_data.insert(pos.clone(), cube);
     }
 
