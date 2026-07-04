@@ -97,9 +97,9 @@ pub enum Cube {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Pipe {
-    x: Basis,
-    y: Basis,
-    z: Basis,
+    x: Option<Basis>,
+    y: Option<Basis>,
+    z: Option<Basis>,
     has_hadamard: bool
 }
 
@@ -107,12 +107,31 @@ impl FromStr for Pipe {
     type Err = &'static str;
 
     fn from_str(from: &str) -> Result<Self, Self::Err>  {
-      let uppercase = from.to_uppercase();
-      let mut _from = uppercase.chars();
-      let x = Basis::from_str(&_from.next().unwrap().to_string()).unwrap();
-      let y = Basis::from_str(&_from.next().unwrap().to_string()).unwrap();
-      let z = Basis::from_str(&_from.next().unwrap().to_string()).unwrap();
-      let has_hadamard = _from.next().unwrap().to_string().eq("H");
+      let uppercase: Vec<char> = from.chars().collect();
+
+      // FIXME: make me less repetitve please..
+      let x_char = uppercase[0];
+      let mut x: Option<Basis>;
+      if x_char == 'O' {
+        x = None;
+      } else {
+        x = Some(Basis::from_str(&x_char.to_string()).unwrap());
+      }
+      let y_char = uppercase[1];
+      let mut y: Option<Basis>;
+      if y_char == 'O' {
+        y = None;
+      } else {
+        y = Some(Basis::from_str(&y_char.to_string()).unwrap());
+      }
+      let z_char = uppercase[2];
+      let mut z: Option<Basis>;
+      if z_char == 'O' {
+        z = None;
+      } else {
+        z = Some(Basis::from_str(&z_char.to_string()).unwrap());
+      }
+      let has_hadamard = uppercase.len() == 4 && uppercase[3] == 'H';
       Ok(Self {x: x, y: y, z: z, has_hadamard: has_hadamard})
    }
 }

@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fs::File, io::{BufRead, BufReader}, path::Path};
+use std::{collections::HashMap, fs::File, io::{BufRead, BufReader}, path::Path, str::FromStr};
 use petgraph::{Graph, Undirected, graph::{NodeIndex, UnGraph}};
 
 use crate::cube::{Cube, Pipe, ZXCube};
@@ -59,11 +59,19 @@ impl BlockGraph {
                 let reader = BufReader::new(goodfile);
                 let mut parse_cubes = false;
                 let mut parse_pipes = false;
-                let mut cubeIdToNodeIndex: HashMap<u32, NodeIndex> = HashMap::new();
+                let mut cubeIdToNodeIndex: HashMap<String, NodeIndex> = HashMap::new();
                 for (index, line) in reader.lines().enumerate() {
                     // TODO: skip header and metadata
                     let _line = line.unwrap();
-                    if _line.is_empty() {
+                    if _line.len() == 1 || _line.is_empty() {
+                        continue;
+                    }
+                    if _line.starts_with("CUBE") {
+                        parse_cubes = true; // start parsing cubes
+                        continue;
+                    } else if _line.starts_with("PIPE") {
+                        parse_pipes = true; // start parsing pipes
+                        parse_cubes = false;
                         continue;
                     }
                     if (parse_cubes) {
@@ -71,26 +79,30 @@ impl BlockGraph {
                         // if items.len() != 6 {
                         //     Err(String::from("Incorrect cube spec"))
                         // }
-                        let cube_id: u32 = items[0].parse().unwrap();
+                        let cube_id: &str = items[0];
                         // TODO: when cube is added to the graph, map its cube
                         // id to its NodeIndex, then use that to link up the pipes
                         let x_coord: i32 = items[1].parse().unwrap();
                         let y_coord: i32 = items[2].parse().unwrap();
                         let z_coord: i32 = items[3].parse().unwrap();
                         let kind: String = items[4].to_uppercase();
+                        // FIXME: need to generate the correct kind of cube here.
+                        // ZXCube, YHalfCube, Port
                         let zx_cube = Cube::ZX(ZXCube::from_str(&kind)?);
                         let pos: CubePosition = CubePosition::new(x_coord, y_coord, z_coord);
-                        let annotation: &str = items[5];
-                        let idx = to_return.graph.add_node(pos);
-                        to_return.cube_data.insert(pos, zx_cube); // FIXME: cube need be polymorphic.
-                        cubeIdToNodeIndex.insert(cube_id, idx);
+                        let annotation: &str = items[5]; // TODO: how is this used?
+                        let idx: NodeIndex = to_return.graph.add_node(pos);
+                        to_return.cube_data.insert(pos, zx_cube);
+                        cubeIdToNodeIndex.insert(cube_id.to_string(), idx);
                     } else if (parse_pipes) {
                         let items: Vec<&str> = _line.split(";").collect();
-                    } else if _line.starts_with("CUBE") {
-                        parse_cubes = true; // start parsing cubes
-                    } else if _line.starts_with("PIPE") {
-                        parse_pipes = true; // start parsing pipes
-                        parse_cubes = false;
+                        let cube1_id: &str = items[0];
+                        let cube2_id: &str = items[1];
+                        let kind = items[2];
+                        let cube1_idx = cubeIdToNodeIndex.get(cube1_id).unwrap();
+                        let cube2_idx = cubeIdToNodeIndex.get(cube2_id).unwrap();
+                        let weight: Pipe = Pipe::from_str(kind)?;
+                        to_return.graph.add_edge(*cube1_idx, *cube2_idx, weight);
                     }
                 }
                 Ok(to_return)
