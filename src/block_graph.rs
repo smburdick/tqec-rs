@@ -123,6 +123,14 @@ impl BlockGraph {
         self.ports.len()
     }
 
+    pub fn cubes(&self) -> Vec<&Cube> {
+        self.cube_data.values().collect()
+    }
+
+    pub fn occupied_positions(&self) -> Vec<&CubePosition> {
+        self.cube_data.keys().collect()
+    }
+
     // pub fn num_y_half_cubes(&self) -> usize {
     //     self.cube_data.values().filter(|cube| cube.is_y_half_cube()).count()
     // }
