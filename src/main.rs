@@ -1,7 +1,8 @@
 use crate::block_graph::BlockGraph;
 
-pub mod cube;
-pub mod block_graph;
+mod cube;
+mod block_graph;
+mod positioned;
 
 fn main() {
   let bg = BlockGraph::from_bgraph_file("bgraphs/cnot.bgraph").unwrap();

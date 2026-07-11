@@ -2,6 +2,7 @@ use std::{collections::HashMap, fs::File, io::{BufRead, BufReader}, path::Path, 
 use petgraph::{Graph, Undirected, graph::{NodeIndex, UnGraph}};
 
 use crate::cube::{Cube, Pipe, ZXCube};
+use crate::positioned::PositionedZX;
 
 #[derive(PartialEq, Eq, Hash, Debug, Copy, Clone)]
 pub struct CubePosition {
@@ -171,6 +172,10 @@ impl BlockGraph {
             .cloned()
             .filter(|pos| self.degree(*pos) == 1)
             .collect()
+    }
+
+    pub fn to_zx_graph(&self) -> PositionedZX {
+        PositionedZX::new(self) //
     }
 
 }
