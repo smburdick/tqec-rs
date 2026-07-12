@@ -55,19 +55,9 @@ impl ZXCube {
       Err("invalid")
     }
   }
-  pub fn num_z_boundaries(&self) -> u8 {
-    // TODO: apply DRY to this code.
-    let mut n = 0;
-    if matches!(self.x, Basis::Z) {
-      n += 1;
-    }
-    if matches!(self.y, Basis::Z) {
-      n += 1;
-    }
-    if matches!(self.z, Basis::Z) {
-      n += 1;
-    }
-    n
+  pub fn num_z_boundaries(&self) -> usize {
+    vec!(self.x, self.y, self.z).iter().filter(|b| **b == Basis::Z)
+      .count()
   }
 }
 
