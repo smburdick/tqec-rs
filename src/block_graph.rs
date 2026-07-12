@@ -175,7 +175,7 @@ impl BlockGraph {
     }
 
     pub fn to_zx_graph(&self) -> PositionedZX {
-        PositionedZX::new(self) //
+        PositionedZX::from_block_graph(self) //
     }
 
 }
