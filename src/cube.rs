@@ -1,6 +1,7 @@
 use std::{str::FromStr};
+use rand::random;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Basis {
   X,
   Z,
@@ -27,7 +28,46 @@ impl Basis {
   }
 }
 
-#[derive(Debug, Clone)]
+#[derive(PartialEq, Eq, Hash, Debug, Copy, Clone)]
+pub struct CubePosition {
+    x: i32,
+    y: i32,
+    z: i32
+}
+
+impl CubePosition {
+    pub fn new(x: i32, y: i32, z: i32) -> CubePosition {
+        Self {
+            x: x, y: y, z: z
+        }
+    }
+}
+
+#[derive(Hash, Debug, Clone, Eq, PartialEq)]
+pub struct Cube {
+  kind: CubeKind,
+  position: CubePosition
+}
+
+impl Cube {
+  pub fn new(kind: CubeKind, position: CubePosition) -> Cube {
+    Self {
+      kind: kind,
+      position: position
+    }
+  }
+  pub fn kind(&self) -> CubeKind {
+   self.kind
+  }
+  pub fn position(&self) -> CubePosition {
+    self.position
+  }
+  pub fn eq(&self, other: &Cube) -> bool {
+    self.kind == other.kind && self.position == other.position
+  }
+}
+
+#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
 pub struct ZXCube {
   x: Basis,
   y: Basis,
@@ -61,6 +101,7 @@ impl ZXCube {
   }
 }
 
+// TODO:
 // pub struct Port {
 
 // }
@@ -69,14 +110,8 @@ impl ZXCube {
 
 // }
 
-// #[derive(Debug, Hash, Clone, Copy, PartialEq, Eq)]
-// pub enum CubeKind {
-//   ZXCube, Port, YHalfCube
-// }
-
-
-#[derive(Debug, Clone)]
-pub enum Cube {
+#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
+pub enum CubeKind {
   ZX(ZXCube)
   // Port(Port),
   // YHalf(YHalfCube)
@@ -99,8 +134,9 @@ pub enum Cube {
 //   }
 // }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Pipe {
+    id: u64, // Ensure uniqueness of pipes in graph.
     x: Option<Basis>,
     y: Option<Basis>,
     z: Option<Basis>,
@@ -111,31 +147,32 @@ impl FromStr for Pipe {
     type Err = &'static str;
 
     fn from_str(from: &str) -> Result<Self, Self::Err>  {
-      let uppercase: Vec<char> = from.chars().collect();
+      let chars: Vec<char> = from.chars().collect();
 
-      // FIXME: make me less repetitve please..
-      let x_char = uppercase[0];
-      let mut x: Option<Basis>;
-      if x_char == 'O' {
-        x = None;
-      } else {
-        x = Some(Basis::from_str(&x_char.to_string()).unwrap());
+      if chars.len() < 3 {
+          return Err("Pipe must contain axial metadata (x, y, z, has_hadamard)");
       }
-      let y_char = uppercase[1];
-      let mut y: Option<Basis>;
-      if y_char == 'O' {
-        y = None;
-      } else {
-        y = Some(Basis::from_str(&y_char.to_string()).unwrap());
-      }
-      let z_char = uppercase[2];
-      let mut z: Option<Basis>;
-      if z_char == 'O' {
-        z = None;
-      } else {
-        z = Some(Basis::from_str(&z_char.to_string()).unwrap());
-      }
-      let has_hadamard = uppercase.len() == 4 && uppercase[3] == 'H';
-      Ok(Self {x: x, y: y, z: z, has_hadamard: has_hadamard})
+
+      let parse_basis = |c: char| -> Result<Option<Basis>, Self::Err> {
+          if c == 'O' {
+              Ok(None)
+          } else {
+              Ok(Some(Basis::from_str(&c.to_string())?))
+          }
+      };
+
+      Ok(Self {
+          id: random(),
+          x: parse_basis(chars[0])?,
+          y: parse_basis(chars[1])?,
+          z: parse_basis(chars[2])?,
+          has_hadamard: chars.get(3) == Some(&'H'),
+      })
    }
+}
+
+impl Pipe {
+  pub fn has_hadamard(&self) -> bool {
+    self.has_hadamard
+  }
 }

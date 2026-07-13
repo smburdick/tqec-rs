@@ -1,29 +1,15 @@
 use std::{collections::HashMap, fs::File, io::{BufRead, BufReader}, path::Path, str::FromStr};
-use petgraph::{Graph, Undirected, graph::{NodeIndex, UnGraph}};
+use petgraph::{Graph, Undirected, graph::{EdgeIndex, NodeIndex, UnGraph}};
 
-use crate::cube::{Cube, Pipe, ZXCube};
+use crate::cube::{Cube, CubeKind, CubePosition, Pipe, ZXCube};
 use crate::positioned::PositionedZX;
-
-#[derive(PartialEq, Eq, Hash, Debug, Copy, Clone)]
-pub struct CubePosition {
-    x: i32,
-    y: i32,
-    z: i32
-}
-
-impl CubePosition {
-    pub fn new(x: i32, y: i32, z: i32) -> CubePosition {
-        Self {
-            x: x, y: y, z: z
-        }
-    }
-}
 
 pub struct BlockGraph {
     name: String,
-    graph: Graph<CubePosition, Pipe, Undirected>,
-    node_indices: HashMap<CubePosition, NodeIndex>,
-    cube_data: HashMap<CubePosition, Cube>,
+    graph: Graph<Cube, Pipe, Undirected>,
+    node_indices: HashMap<CubePosition, NodeIndex>, // Used for client lookups
+    edge_indices: HashMap<Pipe, EdgeIndex>,
+    // cube_data: HashMap<CubePosition, Cube>,
     ports: HashMap<String, CubePosition>
 }
 
@@ -33,22 +19,12 @@ impl BlockGraph {
         Self {
             name: name,
             graph: UnGraph::default(),
-            cube_data: HashMap::new(),
+            // cube_data: HashMap::new(),
             node_indices: HashMap::new(),
+            edge_indices: HashMap::new(),
             ports: HashMap::new()
         }
     }
-
-    // pub fn from_dae_file(filepath: &str) -> Result<Self, Error> {
-    //     let contents: Result<Document, Error> = Document::from_file(filepath);
-    //     match contents {
-    //         Ok(val) => {
-    //             // let doc = contents.unwrap();
-    //             Ok(BlockGraph::new("Example".to_string()))
-    //         },
-    //         Err(e) => Err(e),
-    //     }
-    // }
 
     pub fn from_bgraph_file(filepath: &str) -> Result<Self, String> {
         // Based on https://tqec.github.io/tqec/user_guide/bgraph.html
@@ -75,7 +51,7 @@ impl BlockGraph {
                         parse_cubes = false;
                         continue;
                     }
-                    if (parse_cubes) {
+                    if parse_cubes {
                         let items: Vec<&str> = _line.split(";").collect();
                         // if items.len() != 6 {
                         //     Err(String::from("Incorrect cube spec"))
@@ -89,13 +65,15 @@ impl BlockGraph {
                         let kind: String = items[4].to_uppercase();
                         // FIXME: need to generate the correct kind of cube here.
                         // ZXCube, YHalfCube, Port
-                        let zx_cube = Cube::ZX(ZXCube::from_str(&kind)?);
+                        let zx_cube_kind = CubeKind::ZX(ZXCube::from_str(&kind)?);
                         let pos: CubePosition = CubePosition::new(x_coord, y_coord, z_coord);
                         let annotation: &str = items[5]; // TODO: how is this used?
-                        let idx: NodeIndex = to_return.graph.add_node(pos);
-                        to_return.cube_data.insert(pos, zx_cube);
+                        let cube: Cube = Cube::new(zx_cube_kind, pos);
+                        let idx = to_return.graph.add_node(cube);
+                        to_return.node_indices.insert(pos, idx);
+                        // to_return.cube_data.insert(pos, zx_cube);
                         cubeIdToNodeIndex.insert(cube_id.to_string(), idx);
-                    } else if (parse_pipes) {
+                    } else if parse_pipes {
                         let items: Vec<&str> = _line.split(";").collect();
                         let cube1_id: &str = items[0];
                         let cube2_id: &str = items[1];
@@ -103,7 +81,8 @@ impl BlockGraph {
                         let cube1_idx = cubeIdToNodeIndex.get(cube1_id).unwrap();
                         let cube2_idx = cubeIdToNodeIndex.get(cube2_id).unwrap();
                         let weight: Pipe = Pipe::from_str(kind)?;
-                        to_return.graph.add_edge(*cube1_idx, *cube2_idx, weight);
+                        let eidx = to_return.graph.add_edge(*cube1_idx, *cube2_idx, weight);
+                        to_return.edge_indices.insert(weight, eidx);
                     }
                 }
                 Ok(to_return)
@@ -125,11 +104,30 @@ impl BlockGraph {
     }
 
     pub fn cubes(&self) -> Vec<&Cube> {
-        self.cube_data.values().collect()
+        self.graph.node_weights().collect()
     }
 
-    pub fn occupied_positions(&self) -> Vec<&CubePosition> {
-        self.cube_data.keys().collect()
+    // pub fn cube_positions(&self) -> Vec<&CubePosition> {
+    //     self.cube_data.keys().collect()
+    // }
+
+    // pub fn cube_from_cube_position(&self, cube_pos: &CubePosition) -> &Cube {
+    //     self.cube_data.get(cube_pos).unwrap()
+    // }
+
+    pub fn pipes(&self) -> Vec<&Pipe> {
+        self.graph.edge_references().map(|e| e.weight()).collect()
+    }
+
+    // pub fn occupied_positions(&self) -> Vec<&CubePosition> {
+    //     self.cube_data.keys().collect()
+    // }
+
+    pub fn spanning_cubes_of(&self, pipe: &Pipe) -> (&Cube, &Cube) {
+        let (idx1, idx2) = self.graph.edge_endpoints(*self.edge_indices.get(pipe).unwrap()).unwrap();
+        let cube1 = self.graph.node_weight(idx1).unwrap();
+        let cube2 = self.graph.node_weight(idx2).unwrap();
+        (cube1, cube2)
     }
 
     // pub fn num_y_half_cubes(&self) -> usize {
@@ -153,14 +151,14 @@ impl BlockGraph {
     //         / 2.0
     // }
 
-    pub fn add_cube(&mut self, pos: CubePosition, cube: Cube, label: String) {
-        let idx: NodeIndex = self.graph.add_node(pos.clone());
-        self.node_indices.insert(pos.clone(), idx);
-        self.cube_data.insert(pos.clone(), cube);
-    }
+    // pub fn add_cube(&mut self, pos: CubePosition, cube: Cube, label: String) {
+    //     let idx: NodeIndex = self.graph.add_node(pos.clone());
+    //     self.node_indices.insert(pos.clone(), idx);
+    //     self.cube_data.insert(pos.clone(), cube);
+    // }
 
-    pub fn degree(&self, pos: CubePosition) -> usize {
-        let idx: Option<&NodeIndex> = self.node_indices.get(&pos);
+    pub fn degree(&self, cube_pos: &CubePosition) -> usize {
+        let idx: Option<&NodeIndex> = self.node_indices.get(cube_pos);
         match idx {
             Some(val) => self.graph.neighbors(*val).count(),
             None => 0
@@ -168,9 +166,9 @@ impl BlockGraph {
     }
 
     pub fn leaves(&self) -> Vec<CubePosition> {
-        self.cube_data.keys()
+        self.node_indices.keys()
             .cloned()
-            .filter(|pos| self.degree(*pos) == 1)
+            .filter(|pos| self.degree(pos) == 1)
             .collect()
     }
 

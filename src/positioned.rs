@@ -1,33 +1,44 @@
 use std::{collections::HashMap};
 
-use fraction::Fraction;
-use quizx::{graph::{GraphLike, VType}, hash_graph::Graph};
+use quizx::{graph::{EType, GraphLike, V, VType}, hash_graph::Graph, phase::Phase};
 
-use crate::{block_graph::{BlockGraph, CubePosition}, cube::{Cube, ZXCube}}; // TODO: decide which kind of graph to use (vec or hash)
+use crate::{block_graph::BlockGraph, cube::{Cube, CubeKind, CubePosition, ZXCube}}; // TODO: decide which kind of graph to use (vec or hash)
 
 pub struct PositionedZX {
   graph: Graph, // use ZX graph
-  positions: HashMap<i32, CubePosition> // TODO: may need different key that's ZXGraph firendlier
+  positions: HashMap<V, Cube> // TODO: may need different key that's ZXGraph firendlier
 }
 
 impl PositionedZX {
   pub fn from_block_graph(block_graph: &BlockGraph) -> Self {
-    // TODO: iterate over bgraph cubes, convert to ZXGraph vertices
-
-    // TODO: iterate over bgraph pipes, convert to ZXGraph edges
+    let mut graph = Graph::new();
+    let mut zx2bg: HashMap<V, Cube> = HashMap::new();
+    let mut bg2zx: HashMap<Cube, V> = HashMap::new();
+    for cube in block_graph.cubes() {
+      let (vt, phase) = PositionedZX::cube_to_zx(cube);
+      let v: V = graph.add_vertex_with_phase(vt, phase);
+      zx2bg.insert(v, cube.clone());
+      bg2zx.insert(cube.clone(), v);
+    }
+    for pipe in block_graph.pipes() {
+      let edge_type = if pipe.has_hadamard() { EType::H } else { EType::N };
+      let (u, v) = block_graph.spanning_cubes_of(pipe);
+      graph.add_edge_with_type(*bg2zx.get(u).unwrap(), *bg2zx.get(v).unwrap(), edge_type);
+    }
     Self {
-      graph: Graph::new(),
-      positions: HashMap::new()
+      graph: graph,
+      positions: zx2bg
     }
   }
-  // TODO: use traits or generics to have different kinds of cubes?
-  pub fn cube_to_zx(cube: &Cube) -> (VType, Fraction) {
-    match cube {
-        Cube::ZX(_cube) => {
-          if _cube.num_z_boundaries() == 1 {
-            (VType::Z, Fraction::new(0u32, 1u32))
+
+  pub fn cube_to_zx(cube: &Cube) -> (VType, Phase) {
+    match cube.kind() {
+        CubeKind::ZX(zx_cube) => {
+          let phase: Phase = Phase::from_f64(0.0);
+          if zx_cube.num_z_boundaries() == 1 {
+            (VType::Z, phase)
           } else {
-            (VType::X, Fraction::new(0u32, 1u32))
+            (VType::X, phase)
           }
         }
       } // TODO: implement port/yhalf
