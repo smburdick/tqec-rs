@@ -5,8 +5,8 @@ use quizx::{graph::{EType, GraphLike, V, VType}, hash_graph::Graph, phase::Phase
 use crate::{block_graph::BlockGraph, cube::{Cube, CubeKind, CubePosition, ZXCube}}; // TODO: decide which kind of graph to use (vec or hash)
 
 pub struct PositionedZX {
-  graph: Graph, // use ZX graph
-  positions: HashMap<V, Cube> // TODO: may need different key that's ZXGraph firendlier
+  graph: Graph,
+  positions: HashMap<V, Cube>
 }
 
 impl PositionedZX {

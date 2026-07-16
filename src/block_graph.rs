@@ -1,7 +1,7 @@
 use std::{collections::HashMap, fs::File, io::{BufRead, BufReader}, path::Path, str::FromStr};
 use petgraph::{Graph, Undirected, graph::{EdgeIndex, NodeIndex, UnGraph}};
 
-use crate::cube::{Cube, CubeKind, CubePosition, Pipe, ZXCube};
+use crate::{correlation::CorrelationSurface, cube::{Cube, CubeKind, CubePosition, Pipe, ZXCube}};
 use crate::positioned::PositionedZX;
 
 pub struct BlockGraph {
@@ -174,6 +174,11 @@ impl BlockGraph {
 
     pub fn to_zx_graph(&self) -> PositionedZX {
         PositionedZX::from_block_graph(self) //
+    }
+
+    // TODO:
+    pub fn find_correlation_surfaces() -> Vec<CorrelationSurface> {
+        Vec::new() // TODO:
     }
 
 }

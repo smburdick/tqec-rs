@@ -3,6 +3,7 @@ use crate::block_graph::BlockGraph;
 mod cube;
 mod block_graph;
 mod positioned;
+mod correlation;
 
 fn main() {
   let bg = BlockGraph::from_bgraph_file("bgraphs/cnot.bgraph").unwrap();
