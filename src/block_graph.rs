@@ -10,7 +10,7 @@ pub struct BlockGraph {
     node_indices: HashMap<CubePosition, NodeIndex>, // Used for client lookups
     edge_indices: HashMap<Pipe, EdgeIndex>,
     // cube_data: HashMap<CubePosition, Cube>,
-    ports: HashMap<String, CubePosition>
+    ports: HashMap<String, CubePosition> // TODO: how to add ports?
 }
 
 impl BlockGraph {
@@ -107,21 +107,9 @@ impl BlockGraph {
         self.graph.node_weights().collect()
     }
 
-    // pub fn cube_positions(&self) -> Vec<&CubePosition> {
-    //     self.cube_data.keys().collect()
-    // }
-
-    // pub fn cube_from_cube_position(&self, cube_pos: &CubePosition) -> &Cube {
-    //     self.cube_data.get(cube_pos).unwrap()
-    // }
-
     pub fn pipes(&self) -> Vec<&Pipe> {
         self.graph.edge_references().map(|e| e.weight()).collect()
     }
-
-    // pub fn occupied_positions(&self) -> Vec<&CubePosition> {
-    //     self.cube_data.keys().collect()
-    // }
 
     pub fn spanning_cubes_of(&self, pipe: &Pipe) -> (&Cube, &Cube) {
         let (idx1, idx2) = self.graph.edge_endpoints(*self.edge_indices.get(pipe).unwrap()).unwrap();
@@ -130,9 +118,9 @@ impl BlockGraph {
         (cube1, cube2)
     }
 
-    // pub fn num_y_half_cubes(&self) -> usize {
-    //     self.cube_data.values().filter(|cube| cube.is_y_half_cube()).count()
-    // }
+    pub fn num_y_half_cubes(&self) -> usize {
+        self.node_indices.values().filter(|idx| self.graph.node_weight(**idx).unwrap().kind() == CubeKind::YHalfCube).count()
+    }
 
     pub fn set_name(&mut self, new_name: String) {
         self.name = new_name;
@@ -146,16 +134,10 @@ impl BlockGraph {
         self.num_ports() > 0
     }
 
-    // pub fn spacetime_volume(&self) -> f64 {
-    //     ((self.num_cubes() - self.num_ports() - self.num_y_half_cubes()) as f64)
-    //         / 2.0
-    // }
-
-    // pub fn add_cube(&mut self, pos: CubePosition, cube: Cube, label: String) {
-    //     let idx: NodeIndex = self.graph.add_node(pos.clone());
-    //     self.node_indices.insert(pos.clone(), idx);
-    //     self.cube_data.insert(pos.clone(), cube);
-    // }
+    pub fn spacetime_volume(&self) -> f64 {
+        ((self.num_cubes() - self.num_ports() - self.num_y_half_cubes()) as f64)
+            / 2.0
+    }
 
     pub fn degree(&self, cube_pos: &CubePosition) -> usize {
         let idx: Option<&NodeIndex> = self.node_indices.get(cube_pos);
@@ -173,12 +155,11 @@ impl BlockGraph {
     }
 
     pub fn to_zx_graph(&self) -> PositionedZX {
-        PositionedZX::from_block_graph(self) //
+        PositionedZX::from_block_graph(self)
     }
 
-    // TODO:
-    pub fn find_correlation_surfaces() -> Vec<CorrelationSurface> {
-        Vec::new() // TODO:
+    pub fn find_correlation_surfaces(&self) -> Vec<CorrelationSurface> {
+        self.to_zx_graph().find_correlation_surfaces().unwrap()
     }
 
 }

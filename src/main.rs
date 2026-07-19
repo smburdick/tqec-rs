@@ -4,6 +4,7 @@ mod cube;
 mod block_graph;
 mod positioned;
 mod correlation;
+mod pauli;
 
 fn main() {
   let bg = BlockGraph::from_bgraph_file("bgraphs/cnot.bgraph").unwrap();

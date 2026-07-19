@@ -17,10 +17,3 @@ pub struct CorrelationSurface {
   edges: HashSet<ZXEdge> // TODO: freeze it
 }
 
-impl CorrelationSurface {
-  pub fn from_pauli_web(web: PauliWeb, g: PositionedZX) { // -> Self
-    () // TODO:
-  }
-
-}
-

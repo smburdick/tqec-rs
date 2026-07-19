@@ -112,9 +112,9 @@ impl ZXCube {
 
 #[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
 pub enum CubeKind {
-  ZX(ZXCube)
-  // Port(Port),
-  // YHalf(YHalfCube)
+  ZX(ZXCube),
+  Port, // TODO: add implementations of port/yhalf
+  YHalfCube
 }
 
 // impl Cube {
