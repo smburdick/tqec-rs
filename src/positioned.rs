@@ -1,13 +1,13 @@
-use std::{collections::HashMap, error::Error};
+use std::collections::{HashMap, HashSet};
 
 use quizx::{graph::{EType, GraphLike, V, VType}, hash_graph::Graph, phase::Phase};
 
-use crate::{block_graph::BlockGraph, correlation::CorrelationSurface, cube::{Cube, CubeKind}, pauli::Pauli}; // TODO: decide which kind of graph to use (vec or hash)
+use crate::{block_graph::BlockGraph, correlation::{CorrelationSurface, ZXNode, ZXEdge}, cube::{Cube, CubeKind}, pauli::Pauli}; // TODO: decide which kind of graph to use (vec or hash)
 
 pub struct PositionedZX {
   /// Conversion of BlockGraph into PyZX structures
   graph: Graph,
-  positions: HashMap<V, Cube>
+  positions: HashMap<V, Cube> // V is alias of usize
 }
 
 impl PositionedZX {
@@ -69,9 +69,22 @@ impl PositionedZX {
       if !self.supports_spiders() {
         return Err("Must support spiders");
       }
+      let mut toReturn = Vec::new();
       // TODO: check if graph is single node
+      if self.graph.num_vertices() == 1 {
+        let v: V = self.graph.vertices().next().unwrap();
+        let pos = self.positions.get(&v).unwrap().position();
+        let vtype = self.graph.vertex_type(v);
+        let phase = self.graph.vertex_data(v).phase;
+        let basis = vertex_type_to_pauli(vtype, phase).unwrap().to_basis().unwrap();
+        let node = ZXNode::new(pos, basis);
+        let mut edges = HashSet::new();
+        let edge = ZXEdge::new(node, node.clone());
+        edges.insert(edge);
+        toReturn.push(CorrelationSurface::new(edges));
+      }
       // TODO: find correlation surfaces with vertex ordering
-      Ok(Vec::new())
+      Ok(toReturn)
   }
 
 }
