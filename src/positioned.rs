@@ -82,8 +82,13 @@ impl PositionedZX {
         let edge = ZXEdge::new(node, node.clone());
         edges.insert(edge);
         toReturn.push(CorrelationSurface::new(edges));
+        return Ok(toReturn);
       }
-      // TODO: find correlation surfaces with vertex ordering
+      let leaves: Vec<V> = self.graph.vertices().filter(|v| self.graph.degree(*v) == 1).collect();
+      if leaves.len() == 0 {
+        return Err("The graph must contain at least one leaf node to find correlation surfaces.");
+      }
+      // TODO: find correlation surfaces for each connected component in the graph
       Ok(toReturn)
   }
 

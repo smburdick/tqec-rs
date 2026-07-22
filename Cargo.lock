@@ -395,6 +395,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d9c4f5dac5e15c24eb999c26181a6ca40b39fe946cbe4c263c7209467bc83af2"
 
 [[package]]
+name = "frozenset"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e5b110328f46621e69076da1a5780b17bd8f6035dc27676bc13c03af5717da8b"
+
+[[package]]
 name = "futures"
 version = "0.3.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1518,6 +1524,7 @@ dependencies = [
 name = "tqec-rs"
 version = "0.1.0"
 dependencies = [
+ "frozenset",
  "petgraph 0.8.3",
  "quizx",
  "rand 0.10.2",

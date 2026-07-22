@@ -1,7 +1,9 @@
+use petgraph::graph::Frozen;
 use quizx::detection_webs::PauliWeb;
 
 use crate::{cube::{Basis, CubePosition}, positioned::PositionedZX};
 use std::collections::HashSet;
+use frozenset::{FrozenSet, Freeze};
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ZXNode {
@@ -29,12 +31,18 @@ impl ZXEdge {
 }
 
 pub struct CorrelationSurface {
-  edges: HashSet<ZXEdge> // TODO: freeze it
+  edges: FrozenSet<ZXEdge>
 }
 
 impl CorrelationSurface {
+
   pub fn new(edges: HashSet<ZXEdge>) -> Self {
-    Self { edges: edges }
+    Self { edges: edges.clone().freeze() }
   }
+
+  pub fn find_correlation_surfaces_with_vertex_ordering() {
+
+  }
+
 }
 
