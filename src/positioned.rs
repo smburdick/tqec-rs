@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
-use quizx::{graph::{EType, GraphLike, V, VType}, hash_graph::Graph, phase::Phase};
+use quizx::{graph::{EType, GraphLike, V, VType, VData}, hash_graph::Graph, phase::Phase};
+use rust_3d::add;
 
 use crate::{block_graph::BlockGraph, correlation::{CorrelationSurface, ZXNode, ZXEdge}, cube::{Cube, CubeKind}, pauli::Pauli}; // TODO: decide which kind of graph to use (vec or hash)
 
@@ -92,6 +93,68 @@ impl PositionedZX {
       Ok(toReturn)
   }
 
+  pub fn as_connected_components(&self) -> Vec<Graph> {
+    let mut visited: HashSet<V> = HashSet::new();
+    let mut components: Vec<Graph> = Vec::new();
+    for start_vertex in self.graph.vertices() { // start_vertex: V
+      if visited.contains(&start_vertex) {
+        continue;
+      }
+      let mut component_vertices: HashSet<V> = HashSet::new();
+      let mut stack: Vec<V> = Vec::new();
+      while stack.len() > 0 {
+        let vertex = stack.pop().unwrap();
+        if visited.contains(&vertex) {
+          continue;
+        }
+        visited.insert(vertex);
+        component_vertices.insert(vertex);
+        for n_can in self.graph.neighbor_vec(vertex) {
+          if !visited.contains(&n_can) {
+            stack.push(n_can);
+          }
+        }
+      }
+      let (graphs, _) = self.partition_graph_from_vertices(vec![component_vertices.iter().cloned().collect()], false);
+      components.push(graphs.get(0).unwrap().clone());
+    }
+    components
+  }
+
+  pub fn partition_graph_from_vertices(&self, vertices_list: Vec<Vec<V>>,  add_cut_edge_as_boundary_node: bool) -> (Vec<Graph>, Vec<AddableVertices>) {
+    let mut subgraphs: Vec<Graph> = Vec::new();
+    // let mut cut_edges: = HashMap::new();
+    for vertices in vertices_list {
+      let mut subgraph = Graph::new();
+      // let mut input_vertices = HashMap::new();
+      // let mut output_vertices = HashMap::new();
+      for v in vertices.iter() {
+        let mut data: VData = VData::default();
+        data.phase = self.graph.phase(*v);
+        data.ty = self.graph.vertex_type(*v);
+        subgraph.add_vertex_with_data(data);
+      }
+      for v in vertices.iter() {
+        for u in self.graph.neighbor_vec(*v).iter() {
+          if vertices.contains(&u) {
+            if !subgraph.connected(*u, *v) {
+              subgraph.add_edge_with_type(*u ,*v, self.graph.edge_type(*u, *v));
+            } else if add_cut_edge_as_boundary_node {
+              todo!("Implement this use case futher down in compilation pipeline, which includes adding input/out")
+            }
+          }
+        }
+      }
+      subgraphs.push(subgraph);
+    }
+    (subgraphs, Vec::new())
+  }
+
+}
+
+pub struct AddableVertices {
+  // adapt from list[tuple[dict[int, tuple[int, int]], dict[int, tuple[int, int]]]] in tqec
+  // TODO: structure the data returned from partition_graph_from_vertices
 }
 
 pub fn vertex_type_to_pauli(vtype: VType, phase: Phase) -> Result<Pauli, &'static str> {

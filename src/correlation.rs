@@ -40,9 +40,10 @@ impl CorrelationSurface {
     Self { edges: edges.clone().freeze() }
   }
 
-  pub fn find_correlation_surfaces_with_vertex_ordering() {
-
-  }
+  // pub fn find_correlation_surfaces_with_vertex_ordering() -> Vec<> {
+  //   // Vertex ordering is not yet supported, so don't handle that case yet
+  //   return 
+  // }
 
 }
 
