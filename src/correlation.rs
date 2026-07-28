@@ -1,8 +1,8 @@
 use petgraph::graph::Frozen;
 use quizx::{detection_webs::PauliWeb, graph::V, vec_graph::Graph};
 
-use crate::{cube::{Basis, CubePosition}, pauli::Pauli, positioned::PositionedZX, utils::concat_bits};
-use std::{collections::{HashMap, HashSet}, iter};
+use crate::{cube::{Basis, CubePosition}, pauli::Pauli, positioned::PositionedZX, utils::concat_ints_as_bits};
+use std::{collections::{HashMap, HashSet}, iter::{self, repeat}};
 use frozenset::{FrozenSet, Freeze};
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -98,13 +98,19 @@ impl HalfEdgeCorrelationSurface {
     if valid {
       return (Some(broadcast_pauli), Some(passthru_parity), None);
     } else {
-      return (None, None, Some(concat_bits(syndrome.iter().map(|&b| b as u64))))
+      return (None, None, Some(concat_ints_as_bits(syndrome.iter().map(|&b| b as u64), 1..)))
     }
   }
 
   pub fn paulis_at_nodes(&self, nodes: impl Iterator<Item = V>) -> impl Iterator<Item = Pauli> {
     nodes.map(|v| self.mapping.get(&v).unwrap().values()).flatten().map(|p| *p)
   }
+
+  // pub fn signatures_at_nodes(&self, nodes: impl Iterator<Item = V>, func: Fn(&Pauli) -> u64, bit_length: u32) -> u64  {
+  //   let paulis = self.paulis_at_nodes(nodes);
+  //   return concat_ints_as_bits(ints, bit_length..);
+  //   todo!("")
+  // }
 
 }
 
