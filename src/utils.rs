@@ -5,12 +5,12 @@ use std::collections::HashMap;
 pub fn concat_ints_as_bits<I, B>(
     ints: I,
     bit_lengths: B,
-) -> u64
+) -> u32
 where
-    I: IntoIterator<Item = u64>,
+    I: IntoIterator<Item = u32>,
     B: IntoIterator<Item = u32>,
 {
-    let mut result = 0u64;
+    let mut result = 0u32;
     let mut shift = 0u32;
 
     for (x, bits) in ints.into_iter().zip(bit_lengths) {

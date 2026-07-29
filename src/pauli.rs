@@ -48,4 +48,8 @@ impl Pauli {
     }
   }
 
+  pub fn value(&self) -> u8 {
+    *self as u8
+  }
+
 }

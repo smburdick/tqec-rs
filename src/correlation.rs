@@ -75,7 +75,7 @@ impl HalfEdgeCorrelationSurface {
     }
   }
 
-  pub fn validate_node(&self, node: V, basis: Pauli, has_unconnected_neighbors: bool) -> (Option<Pauli>, Option<bool>, Option<u64>) {
+  pub fn validate_node(&self, node: V, basis: Pauli, has_unconnected_neighbors: bool) -> (Option<Pauli>, Option<bool>, Option<u32>) {
     let paulis: Vec<Pauli> = self.paulis_at_nodes(iter::once(node)).collect();
     let passthru_parity = paulis.iter().copied().reduce(|acc, p| acc.xor(p)).unwrap() == basis;
     let mut valid = true;
@@ -98,7 +98,7 @@ impl HalfEdgeCorrelationSurface {
     if valid {
       return (Some(broadcast_pauli), Some(passthru_parity), None);
     } else {
-      return (None, None, Some(concat_ints_as_bits(syndrome.iter().map(|&b| b as u64), 1..)))
+      return (None, None, Some(concat_ints_as_bits(syndrome.iter().map(|&b| b as u32), 1..)))
     }
   }
 
@@ -106,11 +106,11 @@ impl HalfEdgeCorrelationSurface {
     nodes.map(|v| self.mapping.get(&v).unwrap().values()).flatten().map(|p| *p)
   }
 
-  // pub fn signatures_at_nodes(&self, nodes: impl Iterator<Item = V>, func: Fn(&Pauli) -> u64, bit_length: u32) -> u64  {
-  //   let paulis = self.paulis_at_nodes(nodes);
-  //   return concat_ints_as_bits(ints, bit_length..);
-  //   todo!("")
-  // }
+  pub fn signature_at_nodes<F>(&self, nodes: impl Iterator<Item = V>, func: F, bit_length: u32) -> u32 where F: Fn(Pauli) -> u32 {
+    let paulis = self.paulis_at_nodes(nodes);
+    let ints = paulis.map(|x|  func(x));
+    concat_ints_as_bits(ints, bit_length..)
+  }
 
 }
 
