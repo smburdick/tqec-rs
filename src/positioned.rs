@@ -210,18 +210,38 @@ impl PositionedZX {
           }
           let bd = boundary_nodes.clone();
           let x = correlation_surface.signature_at_nodes(bd.into_iter(), |p| u32::from(p.value()), 2);
-          if solve_linear_system(vector_basis.clone(), x, false).unwrap().len() == 0 {
+          if solve_linear_system(&mut vector_basis, x, false).unwrap().len() == 0 {
             valid_surfaces.push((&correlation_surface, p.unwrap(), b.unwrap()));
           }
         }
+        // TODO: try to fix local constraint violations by XORing with other invalid surfaces
+        let mut syndrome_basis: HashMap<u32, (u32, u32)> = HashMap::new();
+        let mut basis_surfaces: Vec<&HalfEdgeCorrelationSurface> = Vec::new();
+        for (cs, syndrome) in invalid_surfaces.iter().zip(syndromes.iter()) {
+          if vector_basis.len() == generating_set_sz {
+            break;
+          }
+          // python: iterate over enumerate((syndrome ^ all_one, syndrome))
+          let _s = *syndrome;
+          for (j, target) in [!_s, _s].iter().enumerate() {
+            let indices = solve_linear_system(&mut syndrome_basis, *target, j != 0);
+            if indices.is_ok() {
+              let _indices = indices.unwrap();
+              if _indices.len() == 0 && j == 1 {
+                continue;
+              }
+
+            }
+          }
+        }
+
+        if let Some(cs) = correlation_surfaces.pop() {
+          correlation_surface = cs;
+        } else {
+          return Vec::new(); // no valid representation.
+        }
       }
-      // TODO: try to fix local constraint violations by XORing with other invalid surfaces
-      // FIXME: some things happen before and after this.
-      if let Some(cs) = correlation_surfaces.pop() {
-        correlation_surface = cs;
-      } else {
-        return Vec::new(); // no valid representation.
-      }
+      
     }
 
     todo!("")

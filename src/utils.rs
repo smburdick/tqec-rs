@@ -21,7 +21,7 @@ where
     result
 }
 
-pub fn solve_linear_system(mut basis: HashMap<u32, (u32, u32)>, x: u32, update_basis: bool) -> Result<Vec<u32>, &'static str> {
+pub fn solve_linear_system(basis: &mut HashMap<u32, (u32, u32)>, x: u32, update_basis: bool) -> Result<Vec<u32>, &'static str> {
   // TODO: decide on the integer types (u32 or u64)
   let mut mask: u32 = 1 << basis.keys().len();
   let mut _x = x;

@@ -112,6 +112,38 @@ impl HalfEdgeCorrelationSurface {
     concat_ints_as_bits(ints, bit_length..)
   }
 
+pub fn xor(cses: Vec<&Self>) -> Self {
+    let mut result = Self::new();
+
+    let (first, others) = cses
+        .split_first()
+        .expect("xor requires at least one circuit");
+
+    for (v, neighbors) in &first.mapping {
+        let mut val = HashMap::new();
+
+        for (n, pauli) in neighbors {
+            let mut res_pauli = pauli.clone();
+
+            for cs in others {
+                let neighbor_row = cs
+                    .mapping
+                    .get(v)
+                    .expect("vertex missing from mapping");
+
+                let other_pauli = neighbor_row
+                    .get(n)
+                    .expect("neighbor missing from mapping");
+
+                res_pauli = res_pauli.xor(*other_pauli);
+            }
+            val.insert(*n, res_pauli);
+        }
+        result.mapping.insert(*v, val);
+    }
+    result
+}
+
 }
 
 pub fn find_correlation_surfaces_from_leaf(zx_graph: Graph, leaf: V) -> Vec<HalfEdgeCorrelationSurface> {
