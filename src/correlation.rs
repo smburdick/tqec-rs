@@ -1,9 +1,10 @@
 use petgraph::graph::Frozen;
 use quizx::{detection_webs::PauliWeb, graph::V, vec_graph::Graph};
 
-use crate::{cube::{Basis, CubePosition}, pauli::Pauli, positioned::PositionedZX, utils::concat_ints_as_bits};
+use crate::{cube::{Basis, CubePosition}, pauli::Pauli, positioned::PositionedZX, utils::{concat_ints_as_bits, solve_linear_system}};
 use std::{collections::{HashMap, HashSet}, iter::{self, repeat}};
 use frozenset::{FrozenSet, Freeze};
+use itertools::{Combinations, Itertools};
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ZXNode {
@@ -146,7 +147,90 @@ pub fn xor(cses: Vec<&Self>) -> Self {
 
 }
 
-pub fn find_correlation_surfaces_from_leaf(zx_graph: Graph, leaf: V) -> Vec<HalfEdgeCorrelationSurface> {
+pub fn generate_valid_local_paulis(
+  node_basis: Pauli,
+  broadcast_pauli: Pauli,
+  passthrough_parity: bool,
+  num_unconnected_neighbors: usize,
+  generate_all: bool
+) -> Vec<Vec<Pauli>> {
+  let mut result: Vec<Vec<Pauli>> = Vec::new();
+  let unconnected_neighbors = 1..num_unconnected_neighbors;
+  let combined_pauli = broadcast_pauli.xor(node_basis);
+  if generate_all {
+    let passthru_nodes = ((passthrough_parity as usize)..(unconnected_neighbors.len() + 1))
+      .step_by(2)
+      .flat_map(|n| unconnected_neighbors.clone().combinations(n));
+    result = passthru_nodes.map(|p| unconnected_neighbors.clone().map(|n| if p.contains(&n) {combined_pauli} else {broadcast_pauli}).collect()).collect();
+  } else {
+    todo!("Not implemented yet")
+  }
+  result
+}
+
+pub fn expand_correlation_surface_to_node(
+  correlation_surface: HalfEdgeCorrelationSurface,
+  broadcast_pauli: Pauli,
+  passthrough_parity: bool,
+  node: V,
+  node_basis: Pauli,
+  unconnected_neighbors: Vec<V>,
+  edges_are_hadamard: Vec<bool>,
+  generate_all: bool,
+  always_copy: bool
+) -> Vec<HalfEdgeCorrelationSurface> { // TODO: python version uses generator instead, consider using that.
+  let mut new_correlation_surfaces: Vec<HalfEdgeCorrelationSurface> = Vec::new();
+  let cs = correlation_surface.clone();
+  for (i, out_paulis) in generate_valid_local_paulis(node_basis, broadcast_pauli, passthrough_parity, unconnected_neighbors.len(), generate_all).iter().enumerate() {
+    let mut new_correlation_surface: HalfEdgeCorrelationSurface = correlation_surface.clone();
+    if i != 0 || always_copy {
+      new_correlation_surface.mapping.insert(node, new_correlation_surface.mapping.get(&node).unwrap().clone());
+    }
+    for (n, pauli, edge_is_hadamard) in unconnected_neighbors.iter().zip(out_paulis.iter()).zip(edges_are_hadamard.iter()).map(|((x, y), z)| (x, y, z)) {
+      if (i > 0 || always_copy) && cs.mapping.contains_key(n) {
+        new_correlation_surface.mapping.insert(*n, cs.mapping.get(n).unwrap().clone());
+      }
+      new_correlation_surface.add_pauli_to_edge((node, *n), *pauli, *edge_is_hadamard);
+    }
+    new_correlation_surfaces.push(new_correlation_surface);
+  }
+  new_correlation_surfaces
+}
+
+pub fn reform_correlation_surface_generators<F>(
+    correlation_surfaces: Vec<HalfEdgeCorrelationSurface>,
+    signature_func: F,
+    stabilizer_basis: &mut HashMap<u32, (u32, u32)>,
+    basis_surfaces: Vec<HalfEdgeCorrelationSurface>,
+    construct_new_surfaces: bool,// = True,
+    num_new_surfaces_needed: usize, // | None = None,
+    num_basis_surfaces_needed: usize //int | None = None,
+) -> (
+    Vec<HalfEdgeCorrelationSurface>,
+    Vec<HalfEdgeCorrelationSurface>,
+)
+where
+    F: Fn(HalfEdgeCorrelationSurface) -> u32,
+{
+  let mut new_basis_surfaces = basis_surfaces.clone();
+  for cs in correlation_surfaces {
+    let indices = solve_linear_system(stabilizer_basis, signature_func(cs.clone()), true);
+    if indices.is_err() {
+      new_basis_surfaces.push(cs);
+      if num_basis_surfaces_needed > 0 && basis_surfaces.len() > num_basis_surfaces_needed {
+        break;
+      }
+      continue;
+    }
+    if construct_new_surfaces {
+      todo!("")
+    }
+  }
+  (new_basis_surfaces, Vec::new())
+}
+
+pub fn find_correlation_surfaces_from_leaf(zx_graph: PositionedZX, leaf: V) -> Vec<HalfEdgeCorrelationSurface> {
+  let correlation_surfaces = zx_graph.find_correlation_surface_generating_set_from_leaf(leaf);
   todo!("")
 }
 

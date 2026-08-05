@@ -1,9 +1,9 @@
-use std::collections::{HashMap, HashSet};
+use std::{collections::{HashMap, HashSet}, iter};
 
 use quizx::{graph::{EType, GraphLike, V, VType, VData}, vec_graph::Graph, phase::Phase};
 use rust_3d::add;
 
-use crate::{block_graph::BlockGraph, correlation::{CorrelationSurface, HalfEdgeCorrelationSurface, ZXEdge, ZXNode}, cube::{Cube, CubeKind}, pauli::Pauli, utils::solve_linear_system}; // TODO: decide which kind of graph to use (vec or hash)
+use crate::{block_graph::BlockGraph, correlation::{CorrelationSurface, HalfEdgeCorrelationSurface, ZXEdge, ZXNode, expand_correlation_surface_to_node, reform_correlation_surface_generators}, cube::{Cube, CubeKind}, pauli::Pauli, utils::solve_linear_system}; // TODO: decide which kind of graph to use (vec or hash)
 
 pub struct PositionedZX {
   /// Conversion of BlockGraph into PyZX structures
@@ -97,6 +97,7 @@ impl PositionedZX {
           components.push((component, leaf));
         }
       }
+
       Ok(toReturn)
   }
 
@@ -157,6 +158,7 @@ impl PositionedZX {
     (subgraphs, Vec::new())
   }
 
+  // TODO: this should take a ZXGraph (a connected subgraph component) instead of a positionedZX object
   pub fn find_correlation_surface_generating_set_from_leaf(&self, leaf: V) -> Vec<HalfEdgeCorrelationSurface> {
     let neighbor = self.graph.neighbors(leaf).next().unwrap();
     // correlation_surfaces owns the data of each surface so the rest have to be borrowed via references
@@ -169,54 +171,70 @@ impl PositionedZX {
           cs
         } 
       ).collect();
+
     if self.graph.degree(neighbor) == 1 {
       return correlation_surfaces;
     }
-    // TODO: explore the frontier
+
     let mut frontier: Vec<V> = vec![neighbor];
     let mut explored_leaves: Vec<V> = vec![leaf];
     let mut explored_nodes: HashSet<V> = HashSet::new();
     explored_nodes.insert(leaf);
-    let mut correlation_surface = correlation_surfaces.pop().unwrap();
+
+    // let mut correlation_surface: HalfEdgeCorrelationSurface;
+
+    let func = |p: Pauli| u32::from(p.value());
 
     while frontier.len() > 0 {
       if let Some(current_node) = frontier.pop() {
-        let map =  &correlation_surface.mapping;
+        if correlation_surfaces.len() == 0 {
+          break;
+        }
+        let mut correlation_surface = correlation_surfaces.pop().unwrap();
+        let map =  correlation_surface.clone().mapping;
         let connected_neighbors = map.get(&current_node).unwrap();
         let unconnected_neighbors: Vec<V> = self.graph.neighbors(current_node)
           .filter(|v| !connected_neighbors.contains_key(v))
           .collect();
-        let mut boundary_nodes: Vec<V> = explored_leaves.iter().chain(frontier.iter()).copied().collect();
+        let mut boundary_nodes: Vec<V> = explored_leaves.iter()
+          .chain(frontier.iter()).copied().collect();
+
         if unconnected_neighbors.len() > 0 {
           boundary_nodes.push(current_node);
         }
-        let generating_set_sz: usize = boundary_nodes.iter().map(|n| map.get(&n).unwrap().keys().len()).sum();
+
+        let generating_set_sz: usize = boundary_nodes.iter() 
+          .map(|n| map.get(&n).unwrap().keys().len())
+          .sum();
         let unexplored_neighbors: Vec<V> = unconnected_neighbors.clone().into_iter().filter(|n| !map.contains_key(n)).collect();
         let passthrough_basis: Pauli = vertex_type_to_pauli(self.graph.vertex_type(current_node), self.graph.phase(current_node)).unwrap();
         // check if each correlation surface candidate satisfies broadcast and passthrough rules
         // on the current node and is not a product of previously checked valid correlation surfaces
-        let mut valid_surfaces: Vec<(&HalfEdgeCorrelationSurface, Pauli, bool)> = Vec::new();
-        let mut invalid_surfaces: Vec<&HalfEdgeCorrelationSurface> = Vec::new();
+        let mut valid_surfaces: Vec<(HalfEdgeCorrelationSurface, Pauli, bool)> = Vec::new();
+        let mut invalid_surfaces: Vec<HalfEdgeCorrelationSurface> = Vec::new();
         let mut syndromes: Vec<u32> = Vec::new();
         let mut vector_basis = HashMap::new();
-        let mut cs_refs = correlation_surfaces.iter().collect::<Vec<&HalfEdgeCorrelationSurface>>();
-        cs_refs.push(&correlation_surface);
+        let mut cs_refs = correlation_surfaces.clone();
+        cs_refs.push(correlation_surface.clone());
+        let sole_cs = [&correlation_surface];
+
         for cs in cs_refs {
           let (p, b, u) = cs.validate_node(current_node, passthrough_basis, unconnected_neighbors.len() > 0);
           if u.is_some() {
-            invalid_surfaces.push(&correlation_surface);
+            invalid_surfaces.push(correlation_surface.clone());
             syndromes.push(u.unwrap());
             continue;
           }
           let bd = boundary_nodes.clone();
-          let x = correlation_surface.signature_at_nodes(bd.into_iter(), |p| u32::from(p.value()), 2);
+          let x = correlation_surface.signature_at_nodes(bd.into_iter(), func, 2);
           if solve_linear_system(&mut vector_basis, x, false).unwrap().len() == 0 {
-            valid_surfaces.push((&correlation_surface, p.unwrap(), b.unwrap()));
+            // TODO: replace cs.clone() with Rc::clone() invocations for better scalability.
+            valid_surfaces.push((correlation_surface.clone(), p.unwrap(), b.unwrap()));
           }
         }
         // TODO: try to fix local constraint violations by XORing with other invalid surfaces
         let mut syndrome_basis: HashMap<u32, (u32, u32)> = HashMap::new();
-        let mut basis_surfaces: Vec<&HalfEdgeCorrelationSurface> = Vec::new();
+        let mut basis_surfaces: Vec<HalfEdgeCorrelationSurface> = Vec::new();
         for (cs, syndrome) in invalid_surfaces.iter().zip(syndromes.iter()) {
           if vector_basis.len() == generating_set_sz {
             break;
@@ -227,24 +245,69 @@ impl PositionedZX {
             let indices = solve_linear_system(&mut syndrome_basis, *target, j != 0);
             if indices.is_ok() {
               let _indices = indices.unwrap();
-              if _indices.len() == 0 && j == 1 {
+              if _indices.len() == 0 {
+                if j == 1 {
+                  basis_surfaces.push(correlation_surface.clone());
+                }
                 continue;
               }
-
+              let input: Vec<&HalfEdgeCorrelationSurface> = _indices
+                  .iter()
+                  .map(|k| basis_surfaces.get(*k as usize).unwrap())
+                  .chain(sole_cs.into_iter())
+                  .collect();
+              let new_correlation_surface = HalfEdgeCorrelationSurface::xor(input);
+              if solve_linear_system(&mut vector_basis, new_correlation_surface.signature_at_nodes(boundary_nodes.clone().into_iter(), func, 1), true).is_ok() {
+                let (u, b, _) = new_correlation_surface.validate_node(current_node, passthrough_basis, unconnected_neighbors.len() > 0);
+                valid_surfaces.push((new_correlation_surface, u.unwrap(), b.unwrap()));
+                break;
+              }
             }
           }
         }
 
-        if let Some(cs) = correlation_surfaces.pop() {
-          correlation_surface = cs;
+        let edges_are_hadamard: Vec<bool> = unconnected_neighbors.iter().map(|n| self.is_hadamard((current_node, *n))).collect();
+
+        correlation_surfaces = valid_surfaces.iter().map(|tup| expand_correlation_surface_to_node(
+          // TODO: arguments
+            tup.0.clone(),
+            tup.1,
+            tup.2,
+            current_node,
+            passthrough_basis,
+            unconnected_neighbors.clone(),
+            edges_are_hadamard.clone(),
+            true,
+            false
+        ).into_iter()).flatten().collect();
+
+        let _cs = correlation_surfaces.pop();
+        if _cs.is_none() {
+          return Vec::new();
         } else {
-          return Vec::new(); // no valid representation.
+          correlation_surface = _cs.unwrap();
+          unconnected_neighbors.iter().filter(|n| !explored_nodes.contains(*n) && self.graph.degree(**n) > 1).for_each(|n| frontier.push(*n));
+          unexplored_neighbors.iter().filter(|n| self.graph.degree(**n) == 1).for_each(|n| explored_leaves.push(*n));
+          explored_nodes.insert(current_node);
+        }
+        if frontier.len() == 0 { // final loop iteration
+          correlation_surfaces.push(correlation_surface);
         }
       }
-      
     }
 
-    todo!("")
+    return reform_correlation_surface_generators(
+      correlation_surfaces,
+      |cs| cs.signature_at_nodes(
+        self.graph.vertices().filter(|v| self.graph.degree(*v) == 1), func, 2
+      ),
+      &mut HashMap::new(),
+      Vec::new(),
+      false,
+      self.graph.vertices().filter(|v| self.graph.degree(*v) == 1).count(),
+      0
+    ).0;
+
   }
 
   pub fn is_hadamard(&self, edge: (V, V)) -> bool {
