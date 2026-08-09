@@ -1,5 +1,9 @@
 use std::collections::HashMap;
 
+use quizx::{graph::{GraphLike, V}, vec_graph::Graph};
+
+use crate::{pauli::Pauli, positioned::vertex_type_to_pauli};
+
 
 
 pub fn concat_ints_as_bits<I, B>(
@@ -55,4 +59,13 @@ pub fn int_to_bit_indices(x: u32) -> Vec<u32> {
 
 fn u32_bit_len(x: u32) -> u32 {
   u32::BITS - x.leading_zeros() 
+}
+
+pub fn zx_to_pauli(g: &Graph, v: V) -> Pauli {
+  let res= vertex_type_to_pauli(g.vertex_type(v), g.phase(v));
+  if res.is_ok() {
+    res.unwrap()
+  } else {
+    todo!("")
+  }
 }

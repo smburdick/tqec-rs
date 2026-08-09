@@ -3,7 +3,7 @@ use std::{collections::{HashMap, HashSet}, iter};
 use quizx::{graph::{EType, GraphLike, V, VType, VData}, vec_graph::Graph, phase::Phase};
 use rust_3d::add;
 
-use crate::{block_graph::BlockGraph, correlation::{CorrelationSurface, HalfEdgeCorrelationSurface, ZXEdge, ZXNode, expand_correlation_surface_to_node, reform_correlation_surface_generators}, cube::{Cube, CubeKind}, pauli::Pauli, utils::solve_linear_system}; // TODO: decide which kind of graph to use (vec or hash)
+use crate::{block_graph::BlockGraph, correlation::{CorrelationSurface, HalfEdgeCorrelationSurface, ZXEdge, ZXNode, expand_correlation_surface_to_node, find_correlation_surfaces_from_leaf, reform_correlation_surface_generators}, cube::{Cube, CubeKind}, pauli::Pauli, utils::solve_linear_system}; // TODO: decide which kind of graph to use (vec or hash)
 
 pub struct PositionedZX {
   /// Conversion of BlockGraph into PyZX structures
@@ -28,10 +28,15 @@ impl PositionedZX {
       let (u, v) = block_graph.spanning_cubes_of(pipe);
       graph.add_edge_with_type(*bg2zx.get(u).unwrap(), *bg2zx.get(v).unwrap(), edge_type);
     }
+    println!("Graph data: {} {}", graph.num_vertices(), graph.num_edges());
     Self {
       graph: graph,
       positions: zx2bg
     }
+  }
+
+  pub fn get_position(&self, v: V) -> Option<&Cube> {
+    self.positions.get(&v)
   }
 
   pub fn cube_to_zx(cube: &Cube) -> (VType, Phase) {
@@ -97,8 +102,12 @@ impl PositionedZX {
           components.push((component, leaf));
         }
       }
-
-      Ok(toReturn)
+      println!("#Components: {}", components.len());
+      Ok(components.iter()
+        .map(|(g, v)| find_correlation_surfaces_from_leaf(g, *v))
+        .flatten()
+        .map(|cs| cs.to_immutable_public_representation(self))
+        .collect::<Vec<CorrelationSurface>>())
   }
 
   fn as_connected_components(&self) -> Vec<Graph> {
@@ -159,20 +168,20 @@ impl PositionedZX {
   }
 
   // TODO: this should take a ZXGraph (a connected subgraph component) instead of a positionedZX object
-  pub fn find_correlation_surface_generating_set_from_leaf(&self, leaf: V) -> Vec<HalfEdgeCorrelationSurface> {
-    let neighbor = self.graph.neighbors(leaf).next().unwrap();
+  pub fn find_correlation_surface_generating_set_from_leaf(graph: &Graph, leaf: V) -> Vec<HalfEdgeCorrelationSurface> {
+    let neighbor = graph.neighbors(leaf).next().unwrap();
     // correlation_surfaces owns the data of each surface so the rest have to be borrowed via references
     // other vectors used here are temporary.
     let mut correlation_surfaces: Vec<HalfEdgeCorrelationSurface> = Pauli::vec_ixyz()
       .into_iter()
       .map(|pauli: Pauli| {
           let mut cs: HalfEdgeCorrelationSurface = HalfEdgeCorrelationSurface::new();
-          cs.add_pauli_to_edge((leaf, neighbor), pauli, self.is_hadamard((leaf, neighbor)));
+          cs.add_pauli_to_edge((leaf, neighbor), pauli, Self::is_hadamard(graph, (leaf, neighbor)));
           cs
         } 
       ).collect();
 
-    if self.graph.degree(neighbor) == 1 {
+    if graph.degree(neighbor) == 1 {
       return correlation_surfaces;
     }
 
@@ -193,7 +202,7 @@ impl PositionedZX {
         let mut correlation_surface = correlation_surfaces.pop().unwrap();
         let map =  correlation_surface.clone().mapping;
         let connected_neighbors = map.get(&current_node).unwrap();
-        let unconnected_neighbors: Vec<V> = self.graph.neighbors(current_node)
+        let unconnected_neighbors: Vec<V> = graph.neighbors(current_node)
           .filter(|v| !connected_neighbors.contains_key(v))
           .collect();
         let mut boundary_nodes: Vec<V> = explored_leaves.iter()
@@ -207,7 +216,7 @@ impl PositionedZX {
           .map(|n| map.get(&n).unwrap().keys().len())
           .sum();
         let unexplored_neighbors: Vec<V> = unconnected_neighbors.clone().into_iter().filter(|n| !map.contains_key(n)).collect();
-        let passthrough_basis: Pauli = vertex_type_to_pauli(self.graph.vertex_type(current_node), self.graph.phase(current_node)).unwrap();
+        let passthrough_basis: Pauli = vertex_type_to_pauli(graph.vertex_type(current_node), graph.phase(current_node)).unwrap();
         // check if each correlation surface candidate satisfies broadcast and passthrough rules
         // on the current node and is not a product of previously checked valid correlation surfaces
         let mut valid_surfaces: Vec<(HalfEdgeCorrelationSurface, Pauli, bool)> = Vec::new();
@@ -266,7 +275,7 @@ impl PositionedZX {
           }
         }
 
-        let edges_are_hadamard: Vec<bool> = unconnected_neighbors.iter().map(|n| self.is_hadamard((current_node, *n))).collect();
+        let edges_are_hadamard: Vec<bool> = unconnected_neighbors.iter().map(|n| Self::is_hadamard(graph, (current_node, *n))).collect();
 
         correlation_surfaces = valid_surfaces.iter().map(|tup| expand_correlation_surface_to_node(
           // TODO: arguments
@@ -286,8 +295,8 @@ impl PositionedZX {
           return Vec::new();
         } else {
           correlation_surface = _cs.unwrap();
-          unconnected_neighbors.iter().filter(|n| !explored_nodes.contains(*n) && self.graph.degree(**n) > 1).for_each(|n| frontier.push(*n));
-          unexplored_neighbors.iter().filter(|n| self.graph.degree(**n) == 1).for_each(|n| explored_leaves.push(*n));
+          unconnected_neighbors.iter().filter(|n| !explored_nodes.contains(*n) && graph.degree(**n) > 1).for_each(|n| frontier.push(*n));
+          unexplored_neighbors.iter().filter(|n| graph.degree(**n) == 1).for_each(|n| explored_leaves.push(*n));
           explored_nodes.insert(current_node);
         }
         if frontier.len() == 0 { // final loop iteration
@@ -299,19 +308,19 @@ impl PositionedZX {
     return reform_correlation_surface_generators(
       correlation_surfaces,
       |cs| cs.signature_at_nodes(
-        self.graph.vertices().filter(|v| self.graph.degree(*v) == 1), func, 2
+        graph.vertices().filter(|v| graph.degree(*v) == 1), func, 2
       ),
       &mut HashMap::new(),
       Vec::new(),
       false,
-      self.graph.vertices().filter(|v| self.graph.degree(*v) == 1).count(),
+      graph.vertices().filter(|v| graph.degree(*v) == 1).count(),
       0
     ).0;
 
   }
 
-  pub fn is_hadamard(&self, edge: (V, V)) -> bool {
-    self.graph.edge_type(edge.0, edge.1) == EType::H
+  fn is_hadamard(graph: &Graph, edge: (V, V)) -> bool {
+    graph.edge_type(edge.0, edge.1) == EType::H
   }
 
 }

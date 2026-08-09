@@ -4,7 +4,7 @@ use crate::cube::Basis;
 
 
 #[repr(u8)]
-#[derive(PartialEq, Clone, Copy)]
+#[derive(PartialEq, Eq, Hash, Clone, Copy)]
 pub enum Pauli {
   I = 0b00,
   X = 0b01,

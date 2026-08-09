@@ -1,10 +1,10 @@
 use petgraph::graph::Frozen;
-use quizx::{detection_webs::PauliWeb, graph::V, vec_graph::Graph};
+use quizx::{detection_webs::PauliWeb, graph::{GraphLike, V}, vec_graph::Graph};
 
-use crate::{cube::{Basis, CubePosition}, pauli::Pauli, positioned::PositionedZX, utils::{concat_ints_as_bits, solve_linear_system}};
-use std::{collections::{HashMap, HashSet}, iter::{self, repeat}};
+use crate::{cube::{Basis, CubePosition}, pauli::Pauli, positioned::PositionedZX, utils::{concat_ints_as_bits, solve_linear_system, zx_to_pauli}};
+use std::{any::Any, collections::{HashMap, HashSet}, iter::{self, repeat}};
 use frozenset::{FrozenSet, Freeze};
-use itertools::{Combinations, Itertools};
+use itertools::{Combinations, Itertools, Position};
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ZXNode {
@@ -61,10 +61,6 @@ impl HalfEdgeCorrelationSurface {
     self.mapping.keys().len() == 1 && self.mapping.values().len() == 1
   }
 
-  pub fn to_immutable_public_representation(&self, graph: PositionedZX) -> CorrelationSurface {
-    todo!("")
-  }
-
   pub fn add_pauli_to_edge(&mut self, edge: (V, V), pauli: Pauli, edge_is_hadamard: bool) {
     let (u, v) = edge;
     for (from, to, p) in [
@@ -113,37 +109,52 @@ impl HalfEdgeCorrelationSurface {
     concat_ints_as_bits(ints, bit_length..)
   }
 
-pub fn xor(cses: Vec<&Self>) -> Self {
-    let mut result = Self::new();
+  pub fn xor(cses: Vec<&Self>) -> Self {
+      let mut result = Self::new();
 
-    let (first, others) = cses
-        .split_first()
-        .expect("xor requires at least one circuit");
+      let (first, others) = cses
+          .split_first()
+          .expect("xor requires at least one circuit");
 
-    for (v, neighbors) in &first.mapping {
-        let mut val = HashMap::new();
+      for (v, neighbors) in &first.mapping {
+          let mut val = HashMap::new();
 
-        for (n, pauli) in neighbors {
-            let mut res_pauli = pauli.clone();
+          for (n, pauli) in neighbors {
+              let mut res_pauli = pauli.clone();
 
-            for cs in others {
-                let neighbor_row = cs
-                    .mapping
-                    .get(v)
-                    .expect("vertex missing from mapping");
+              for cs in others {
+                  let neighbor_row = cs
+                      .mapping
+                      .get(v)
+                      .expect("vertex missing from mapping");
 
-                let other_pauli = neighbor_row
-                    .get(n)
-                    .expect("neighbor missing from mapping");
+                  let other_pauli = neighbor_row
+                      .get(n)
+                      .expect("neighbor missing from mapping");
 
-                res_pauli = res_pauli.xor(*other_pauli);
-            }
-            val.insert(*n, res_pauli);
-        }
-        result.mapping.insert(*v, val);
+                  res_pauli = res_pauli.xor(*other_pauli);
+              }
+              val.insert(*n, res_pauli);
+          }
+          result.mapping.insert(*v, val);
+      }
+      result
+  }
+
+  pub fn to_immutable_public_representation(&self, graph: &PositionedZX) -> CorrelationSurface {
+    if self.is_single_node() {
+      let u_id = self.mapping.iter().next().unwrap().0;
+      let (v_id, pauli) = self.mapping.get(u_id).unwrap().iter().next().unwrap();
+      assert!(u_id == v_id);
+      let cube = graph.get_position(*u_id).unwrap();
+      let node = ZXNode::new(cube.position(), pauli.to_basis().unwrap());
+      let edge: ZXEdge = ZXEdge::new(node, node);
+      let mut set: HashSet<ZXEdge> = HashSet::new();
+      set.insert(edge);
+      CorrelationSurface::new(set);
     }
-    result
-}
+    todo!("")
+  }
 
 }
 
@@ -229,8 +240,60 @@ where
   (new_basis_surfaces, Vec::new())
 }
 
-pub fn find_correlation_surfaces_from_leaf(zx_graph: PositionedZX, leaf: V) -> Vec<HalfEdgeCorrelationSurface> {
-  let correlation_surfaces = zx_graph.find_correlation_surface_generating_set_from_leaf(leaf);
-  todo!("")
+pub fn find_correlation_surfaces_from_leaf(zx_graph: &Graph, leaf: V) -> Vec<HalfEdgeCorrelationSurface> {
+  let correlation_surfaces = PositionedZX::find_correlation_surface_generating_set_from_leaf(zx_graph, leaf);
+  let mut leaves: HashMap<Pauli, Vec<V>> = HashMap::new();
+  for p in Pauli::vec_ixyz() {
+    leaves.insert(p, Vec::new());
+  }
+  for v in zx_graph.vertices().filter(|v| zx_graph.degree(*v) == 1) {
+    let mut p: Pauli = zx_to_pauli(zx_graph, v).flipped(true);
+    leaves.get_mut(&p).unwrap().push(v);
+  }
+  let open_leaves: bool = leaves.get(&Pauli::I).unwrap().len() > 0;
+  leaves.remove_entry(&Pauli::I);
+
+  let mut correlation_surfaces: Vec<HalfEdgeCorrelationSurface> = Vec::new();
+  if leaves.values().map(|m| m.len()).sum::<usize>() > 0 {
+    let sigfunc = |cs: HalfEdgeCorrelationSurface|
+      concat_ints_as_bits(
+    leaves.iter().map(|(pauli, _leaves)|
+            cs.signature_at_nodes(
+        _leaves.iter().map(|l| *l), |p: Pauli| (p != *pauli && p != Pauli::I) as u32, 1)), 
+   leaves.values().map(|l| l.len() as u32
+          ));
+
+    correlation_surfaces = reform_correlation_surface_generators(
+      correlation_surfaces,
+      sigfunc,
+      &mut HashMap::new(),
+      Vec::new(),
+      true,
+      0,
+      0
+    ).1
+  }
+
+  if open_leaves {
+    todo!("")
+  }
+
+  correlation_surfaces
 }
+
+// pub struct Basis {
+//   contents: Vec<u32, (u32, u32)>
+// }
+
+// impl Basis {
+
+//   pub fn new() -> Self {
+
+//   }
+
+//   pub fn construct_from_items<F>(&mut self, items: Vec<dyn Any>, func: F) where F: Fn(dyn Any) -> u32 {
+//     todo!("")
+//   }
+
+// }
 
