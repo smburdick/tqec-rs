@@ -1,9 +1,7 @@
-use std::path::Iter;
-
 use crate::cube::Basis;
 
 
-#[repr(u8)]
+#[repr(usize)]
 #[derive(PartialEq, Eq, Hash, Clone, Copy)]
 pub enum Pauli {
   I = 0b00,
@@ -39,7 +37,7 @@ impl Pauli {
   }
 
   pub fn xor(self, other: Pauli) -> Self {
-    match (self as u8) ^ (other as u8) {
+    match (self as usize) ^ (other as usize) {
       0b00 => Pauli::I,
       0b01 => Pauli::X,
       0b10 => Pauli::Z,
@@ -48,8 +46,8 @@ impl Pauli {
     }
   }
 
-  pub fn value(&self) -> u8 {
-    *self as u8
+  pub fn value(&self) -> usize {
+    *self as usize
   }
 
 }

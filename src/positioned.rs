@@ -1,7 +1,6 @@
-use std::{collections::{HashMap, HashSet}, iter};
+use std::{collections::{HashMap, HashSet}};
 
 use quizx::{graph::{EType, GraphLike, V, VType, VData}, vec_graph::Graph, phase::Phase};
-use rust_3d::add;
 
 use crate::{block_graph::BlockGraph, correlation::{CorrelationSurface, HalfEdgeCorrelationSurface, ZXEdge, ZXNode, expand_correlation_surface_to_node, find_correlation_surfaces_from_leaf, reform_correlation_surface_generators}, cube::{Cube, CubeKind}, pauli::Pauli, utils::solve_linear_system}; // TODO: decide which kind of graph to use (vec or hash)
 
@@ -35,7 +34,15 @@ impl PositionedZX {
     }
   }
 
-  pub fn get_position(&self, v: V) -> Option<&Cube> {
+  pub fn edges(&self) -> impl Iterator<Item = (V, V, EType)> {
+    self.graph.edges()
+  }
+
+  pub fn edge_is_hadamard(&self, edge: (V, V)) -> bool {
+    self.graph.edge_type(edge.0, edge.1) == EType::H
+  }
+
+  pub fn get_cube_at(&self, v: V) -> Option<&Cube> {
     self.positions.get(&v)
   }
 
@@ -96,18 +103,19 @@ impl PositionedZX {
       }
       // TODO: find correlation surfaces for each connected component in the graph
       // We don't support vertex ordering yet!
-      let mut components: Vec<(Graph, V)> = Vec::new();
-      for component in self.as_connected_components() {
-        if let Some(leaf) = component.vertices().filter(|v| component.degree(*v) == 1).min() {
-          components.push((component, leaf));
-        }
+
+      let _c = self.as_connected_components();
+      for c in _c {
+        println!("Component has #v = {} and #e = {}", c.num_vertices(), c.num_edges());
       }
-      println!("#Components: {}", components.len());
-      Ok(components.iter()
-        .map(|(g, v)| find_correlation_surfaces_from_leaf(g, *v))
-        .flatten()
-        .map(|cs| cs.to_immutable_public_representation(self))
-        .collect::<Vec<CorrelationSurface>>())
+
+      let components: Vec<(Graph, V)> = self.as_connected_components()
+        .iter()
+        .map(|component: &Graph| (component.clone(), component.vertices().filter(|v| component.degree(*v) == 1).min().unwrap()))
+        .collect();
+
+      let half_edge_cs: Vec<HalfEdgeCorrelationSurface> = components.iter().map(|(g, v)| find_correlation_surfaces_from_leaf(g, *v)).flatten().collect();
+      Ok(half_edge_cs.iter().map(|cs| cs.to_immutable_public_representation(self)).collect::<Vec<CorrelationSurface>>())
   }
 
   fn as_connected_components(&self) -> Vec<Graph> {
@@ -118,7 +126,7 @@ impl PositionedZX {
         continue;
       }
       let mut component_vertices: HashSet<V> = HashSet::new();
-      let mut stack: Vec<V> = Vec::new();
+      let mut stack: Vec<V> = vec![start_vertex];
       while stack.len() > 0 {
         let vertex = stack.pop().unwrap();
         if visited.contains(&vertex) {
@@ -164,7 +172,7 @@ impl PositionedZX {
       }
       subgraphs.push(subgraph);
     }
-    (subgraphs, Vec::new())
+    (subgraphs, Vec::new()) // TODO: add input/output vertices
   }
 
   // TODO: this should take a ZXGraph (a connected subgraph component) instead of a positionedZX object
@@ -192,8 +200,8 @@ impl PositionedZX {
 
     // let mut correlation_surface: HalfEdgeCorrelationSurface;
 
-    let func = |p: Pauli| u32::from(p.value());
-
+    let func = |p: Pauli| p.value();
+    println!("entering while frontier len > 0, cs len = {}", correlation_surfaces.len());
     while frontier.len() > 0 {
       if let Some(current_node) = frontier.pop() {
         if correlation_surfaces.len() == 0 {
@@ -201,7 +209,8 @@ impl PositionedZX {
         }
         let mut correlation_surface = correlation_surfaces.pop().unwrap();
         let map =  correlation_surface.clone().mapping;
-        let connected_neighbors = map.get(&current_node).unwrap();
+        let default_val: HashMap<V, Pauli> = HashMap::new();
+        let connected_neighbors = map.get(&current_node).unwrap_or(&default_val);
         let unconnected_neighbors: Vec<V> = graph.neighbors(current_node)
           .filter(|v| !connected_neighbors.contains_key(v))
           .collect();
@@ -213,7 +222,7 @@ impl PositionedZX {
         }
 
         let generating_set_sz: usize = boundary_nodes.iter() 
-          .map(|n| map.get(&n).unwrap().keys().len())
+          .map(|n| map.get(&n).unwrap_or(&default_val).keys().len())
           .sum();
         let unexplored_neighbors: Vec<V> = unconnected_neighbors.clone().into_iter().filter(|n| !map.contains_key(n)).collect();
         let passthrough_basis: Pauli = vertex_type_to_pauli(graph.vertex_type(current_node), graph.phase(current_node)).unwrap();
@@ -221,7 +230,7 @@ impl PositionedZX {
         // on the current node and is not a product of previously checked valid correlation surfaces
         let mut valid_surfaces: Vec<(HalfEdgeCorrelationSurface, Pauli, bool)> = Vec::new();
         let mut invalid_surfaces: Vec<HalfEdgeCorrelationSurface> = Vec::new();
-        let mut syndromes: Vec<u32> = Vec::new();
+        let mut syndromes: Vec<usize> = Vec::new();
         let mut vector_basis = HashMap::new();
         let mut cs_refs = correlation_surfaces.clone();
         cs_refs.push(correlation_surface.clone());
@@ -238,11 +247,13 @@ impl PositionedZX {
           let x = correlation_surface.signature_at_nodes(bd.into_iter(), func, 2);
           if solve_linear_system(&mut vector_basis, x, false).unwrap().len() == 0 {
             // TODO: replace cs.clone() with Rc::clone() invocations for better scalability.
-            valid_surfaces.push((correlation_surface.clone(), p.unwrap(), b.unwrap()));
+            if !p.is_none() && !b.is_none() {
+              valid_surfaces.push((correlation_surface.clone(), p.unwrap(), b.unwrap()));
+            }
           }
         }
         // TODO: try to fix local constraint violations by XORing with other invalid surfaces
-        let mut syndrome_basis: HashMap<u32, (u32, u32)> = HashMap::new();
+        let mut syndrome_basis: HashMap<usize, (usize, usize)> = HashMap::new();
         let mut basis_surfaces: Vec<HalfEdgeCorrelationSurface> = Vec::new();
         for (cs, syndrome) in invalid_surfaces.iter().zip(syndromes.iter()) {
           if vector_basis.len() == generating_set_sz {

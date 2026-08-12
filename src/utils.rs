@@ -9,13 +9,13 @@ use crate::{pauli::Pauli, positioned::vertex_type_to_pauli};
 pub fn concat_ints_as_bits<I, B>(
     ints: I,
     bit_lengths: B,
-) -> u32
+) -> usize
 where
-    I: IntoIterator<Item = u32>,
-    B: IntoIterator<Item = u32>,
+    I: IntoIterator<Item = usize>,
+    B: IntoIterator<Item = usize>,
 {
-    let mut result = 0u32;
-    let mut shift = 0u32;
+    let mut result = 0usize;
+    let mut shift = 0usize;
 
     for (x, bits) in ints.into_iter().zip(bit_lengths) {
         result |= x << shift;
@@ -25,12 +25,12 @@ where
     result
 }
 
-pub fn solve_linear_system(basis: &mut HashMap<u32, (u32, u32)>, x: u32, update_basis: bool) -> Result<Vec<u32>, &'static str> {
-  // TODO: decide on the integer types (u32 or u64)
-  let mut mask: u32 = 1 << basis.keys().len();
+pub fn solve_linear_system(basis: &mut HashMap<usize, (usize, usize)>, x: usize, update_basis: bool) -> Result<Vec<usize>, &'static str> {
+  // TODO: decide on the integer types (usize or u64)
+  let mut mask: usize = 1 << basis.keys().len();
   let mut _x = x;
   while _x != 0 {
-    let highest_bit: u32 = u32_bit_len(_x) - 1;
+    let highest_bit: usize = usize_bit_len(_x) - 1;
     if !basis.contains_key(&highest_bit) {
       if update_basis {
         basis.insert(highest_bit, (x, mask));
@@ -47,9 +47,9 @@ pub fn solve_linear_system(basis: &mut HashMap<u32, (u32, u32)>, x: u32, update_
   Ok(int_to_bit_indices(mask).into_iter().rev().collect())
 }
 
-pub fn int_to_bit_indices(x: u32) -> Vec<u32> {
-  let mut to_return: Vec<u32> = Vec::new();
-  for i in 1..u32_bit_len(x) {
+pub fn int_to_bit_indices(x: usize) -> Vec<usize> {
+  let mut to_return: Vec<usize> = Vec::new();
+  for i in 0..usize_bit_len(x) {
     if (x >> i & 1) != 0 {
       to_return.push(i)
     }
@@ -57,8 +57,8 @@ pub fn int_to_bit_indices(x: u32) -> Vec<u32> {
   to_return
 }
 
-fn u32_bit_len(x: u32) -> u32 {
-  u32::BITS - x.leading_zeros() 
+fn usize_bit_len(x: usize) -> usize {
+  (usize::BITS - x.leading_zeros()) as usize
 }
 
 pub fn zx_to_pauli(g: &Graph, v: V) -> Pauli {

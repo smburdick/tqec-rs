@@ -2,14 +2,21 @@ use petgraph::graph::Frozen;
 use quizx::{detection_webs::PauliWeb, graph::{GraphLike, V}, vec_graph::Graph};
 
 use crate::{cube::{Basis, CubePosition}, pauli::Pauli, positioned::PositionedZX, utils::{concat_ints_as_bits, solve_linear_system, zx_to_pauli}};
+use core::fmt;
 use std::{any::Any, collections::{HashMap, HashSet}, iter::{self, repeat}};
 use frozenset::{FrozenSet, Freeze};
 use itertools::{Combinations, Itertools, Position};
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct ZXNode {
   position: CubePosition,
   basis: Basis
+}
+
+impl fmt::Display for ZXNode {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "({}, {})", self.position, self.basis)
+    }
 }
 
 impl ZXNode {
@@ -18,7 +25,7 @@ impl ZXNode {
   }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct ZXEdge {
   u: ZXNode,
   v: ZXNode
@@ -29,21 +36,35 @@ impl ZXEdge {
   pub fn new(u: ZXNode, v: ZXNode) -> Self {
     Self { u: u, v: v}
   }
-  pub fn sorted(u: ZXNode, v: ZXNode) -> Self {
-    todo!()
-  }
 }
 
+impl fmt::Display for ZXEdge {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "<{}, {}>", self.u, self.v)
+    }
+}
+
+#[derive(Debug)]
 pub struct CorrelationSurface {
-  edges: FrozenSet<ZXEdge>
+  edges: HashSet<ZXEdge>
 }
 
 impl CorrelationSurface {
 
   pub fn new(edges: HashSet<ZXEdge>) -> Self {
-    Self { edges: edges.clone().freeze() }
+    Self { edges: edges.clone() }
   }
 
+  pub fn num_edges(&self) -> usize {
+    self.edges.len()
+  }
+
+}
+
+impl fmt::Display for CorrelationSurface {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:?}", self.edges)
+    }
 }
 
 #[derive(Clone)]
@@ -65,15 +86,19 @@ impl HalfEdgeCorrelationSurface {
     let (u, v) = edge;
     for (from, to, p) in [
       (u, v, pauli),
-      (v, u, pauli.flipped(edge_is_hadamard))] {
+      (v, u, pauli.flipped(edge_is_hadamard))]
+    {
         self.mapping.entry(from)
           .or_default()
           .insert(to, p);
     }
   }
 
-  pub fn validate_node(&self, node: V, basis: Pauli, has_unconnected_neighbors: bool) -> (Option<Pauli>, Option<bool>, Option<u32>) {
+  pub fn validate_node(&self, node: V, basis: Pauli, has_unconnected_neighbors: bool) -> (Option<Pauli>, Option<bool>, Option<usize>) {
     let paulis: Vec<Pauli> = self.paulis_at_nodes(iter::once(node)).collect();
+    if paulis.len() == 0 {
+      return (None, None, None);
+    }
     let passthru_parity = paulis.iter().copied().reduce(|acc, p| acc.xor(p)).unwrap() == basis;
     let mut valid = true;
     let broadcast_basis = basis.flipped(true);
@@ -95,15 +120,16 @@ impl HalfEdgeCorrelationSurface {
     if valid {
       return (Some(broadcast_pauli), Some(passthru_parity), None);
     } else {
-      return (None, None, Some(concat_ints_as_bits(syndrome.iter().map(|&b| b as u32), 1..)))
+      return (None, None, Some(concat_ints_as_bits(syndrome.iter().map(|&b| b as usize), 1..)))
     }
   }
 
   pub fn paulis_at_nodes(&self, nodes: impl Iterator<Item = V>) -> impl Iterator<Item = Pauli> {
-    nodes.map(|v| self.mapping.get(&v).unwrap().values()).flatten().map(|p| *p)
+    // let default_val: HashMap<V, Pauli> = HashMap::new();
+    nodes.map(|v| if self.mapping.contains_key(&v) { self.mapping.get(&v).unwrap().values().collect() } else { Vec::new() }).flatten().map(|p| *p)
   }
 
-  pub fn signature_at_nodes<F>(&self, nodes: impl Iterator<Item = V>, func: F, bit_length: u32) -> u32 where F: Fn(Pauli) -> u32 {
+  pub fn signature_at_nodes<F>(&self, nodes: impl Iterator<Item = V>, func: F, bit_length: usize) -> usize where F: Fn(Pauli) -> usize {
     let paulis = self.paulis_at_nodes(nodes);
     let ints = paulis.map(|x|  func(x));
     concat_ints_as_bits(ints, bit_length..)
@@ -146,14 +172,43 @@ impl HalfEdgeCorrelationSurface {
       let u_id = self.mapping.iter().next().unwrap().0;
       let (v_id, pauli) = self.mapping.get(u_id).unwrap().iter().next().unwrap();
       assert!(u_id == v_id);
-      let cube = graph.get_position(*u_id).unwrap();
+      let cube = graph.get_cube_at(*u_id).unwrap();
       let node = ZXNode::new(cube.position(), pauli.to_basis().unwrap());
       let edge: ZXEdge = ZXEdge::new(node, node);
       let mut set: HashSet<ZXEdge> = HashSet::new();
       set.insert(edge);
       CorrelationSurface::new(set);
     }
-    todo!("")
+    let mut span: Vec<ZXEdge> = Vec::new();
+    let mut zx_nodes: HashMap<(usize, Basis), ZXNode> = HashMap::new();
+    let bases = vec![Basis::X, Basis::Z];
+    for (u, v, _) in graph.edges() {
+      // TODO: use alternatives to unwrap.
+      let pauli_u = *self.mapping.get(&u).unwrap().get(&v).unwrap();
+      let pauli_v = *self.mapping.get(&v).unwrap().get(&u).unwrap();
+      let edge_is_hadamard = graph.edge_is_hadamard((u, v));
+      let pos_u = graph.get_cube_at(u).unwrap().position();
+      let pos_v = graph.get_cube_at(v).unwrap().position();
+      let _vec =  Pauli::vec_ixyz();
+      let product: Vec<(Pauli, Pauli)> = _vec.iter()
+        .flat_map(|&x| _vec.iter().map(move |&y| (x, y)))
+        .collect();
+      for (xz_u, xz_v) in product {
+        if (edge_is_hadamard ^(xz_u == xz_v)) && xz_u == pauli_u && xz_v == pauli_v {
+          let basis_u = bases[(xz_u.value() >> 1) as usize];
+          let basis_v = bases[(xz_v.value() >> 1) as usize];
+
+          let node_u = zx_nodes.entry((u, basis_u))
+            .or_insert_with(|| ZXNode::new(pos_u, basis_u)).clone();
+
+          let node_v = zx_nodes.entry((v, basis_v))
+            .or_insert_with(|| ZXNode::new(pos_v, basis_v)).clone();
+
+          span.push(ZXEdge::new(node_u, node_v)); // TODO: sort the nodes, not sure how to do that rn.
+        }
+      }
+    }
+    CorrelationSurface::new(span.into_iter().collect::<HashSet<ZXEdge>>())
   }
 
 }
@@ -166,7 +221,7 @@ pub fn generate_valid_local_paulis(
   generate_all: bool
 ) -> Vec<Vec<Pauli>> {
   let mut result: Vec<Vec<Pauli>> = Vec::new();
-  let unconnected_neighbors = 1..num_unconnected_neighbors;
+  let unconnected_neighbors = 0..num_unconnected_neighbors;
   let combined_pauli = broadcast_pauli.xor(node_basis);
   if generate_all {
     let passthru_nodes = ((passthrough_parity as usize)..(unconnected_neighbors.len() + 1))
@@ -211,7 +266,7 @@ pub fn expand_correlation_surface_to_node(
 pub fn reform_correlation_surface_generators<F>(
     correlation_surfaces: Vec<HalfEdgeCorrelationSurface>,
     signature_func: F,
-    stabilizer_basis: &mut HashMap<u32, (u32, u32)>,
+    stabilizer_basis: &mut HashMap<usize, (usize, usize)>,
     basis_surfaces: Vec<HalfEdgeCorrelationSurface>,
     construct_new_surfaces: bool,// = True,
     num_new_surfaces_needed: usize, // | None = None,
@@ -221,12 +276,13 @@ pub fn reform_correlation_surface_generators<F>(
     Vec<HalfEdgeCorrelationSurface>,
 )
 where
-    F: Fn(HalfEdgeCorrelationSurface) -> u32,
+    F: Fn(HalfEdgeCorrelationSurface) -> usize,
 {
-  let mut new_basis_surfaces = basis_surfaces.clone();
+  let mut new_basis_surfaces: Vec<HalfEdgeCorrelationSurface> = basis_surfaces.clone();
+  let mut new_surfaces: Vec<HalfEdgeCorrelationSurface> = Vec::new();
   for cs in correlation_surfaces {
     let indices = solve_linear_system(stabilizer_basis, signature_func(cs.clone()), true);
-    if indices.is_err() {
+    if (indices.is_ok() && indices.clone().unwrap().len() == 0) || indices.is_err() {
       new_basis_surfaces.push(cs);
       if num_basis_surfaces_needed > 0 && basis_surfaces.len() > num_basis_surfaces_needed {
         break;
@@ -234,14 +290,22 @@ where
       continue;
     }
     if construct_new_surfaces {
-      todo!("")
+      // TODO:
+      let _vec = vec![cs];
+      let _bscs = basis_surfaces.iter().chain(_vec.iter()).collect();
+      let _new_cs = HalfEdgeCorrelationSurface::xor(_bscs);
+      new_surfaces.push(_new_cs);
+      if num_new_surfaces_needed > 0 && new_surfaces.len() > num_new_surfaces_needed {
+        break;
+      }
     }
   }
-  (new_basis_surfaces, Vec::new())
+  (new_basis_surfaces, new_surfaces)
 }
 
 pub fn find_correlation_surfaces_from_leaf(zx_graph: &Graph, leaf: V) -> Vec<HalfEdgeCorrelationSurface> {
-  let correlation_surfaces = PositionedZX::find_correlation_surface_generating_set_from_leaf(zx_graph, leaf);
+  let mut correlation_surfaces = PositionedZX::find_correlation_surface_generating_set_from_leaf(zx_graph, leaf);
+  println!("# Correlation sfcs from leaf = {}", correlation_surfaces.len());
   let mut leaves: HashMap<Pauli, Vec<V>> = HashMap::new();
   for p in Pauli::vec_ixyz() {
     leaves.insert(p, Vec::new());
@@ -252,20 +316,20 @@ pub fn find_correlation_surfaces_from_leaf(zx_graph: &Graph, leaf: V) -> Vec<Hal
   }
   let open_leaves: bool = leaves.get(&Pauli::I).unwrap().len() > 0;
   leaves.remove_entry(&Pauli::I);
-
-  let mut correlation_surfaces: Vec<HalfEdgeCorrelationSurface> = Vec::new();
+  println!("Open leaves = {}", open_leaves);
+  //let mut correlation_surfaces: Vec<HalfEdgeCorrelationSurface> = Vec::new();
   if leaves.values().map(|m| m.len()).sum::<usize>() > 0 {
     let sigfunc = |cs: HalfEdgeCorrelationSurface|
       concat_ints_as_bits(
     leaves.iter().map(|(pauli, _leaves)|
             cs.signature_at_nodes(
-        _leaves.iter().map(|l| *l), |p: Pauli| (p != *pauli && p != Pauli::I) as u32, 1)), 
-   leaves.values().map(|l| l.len() as u32
+        _leaves.iter().map(|l| *l), |p: Pauli| (p != *pauli && p != Pauli::I) as usize, 1)), 
+   leaves.values().map(|l| l.len() as usize
           ));
 
     correlation_surfaces = reform_correlation_surface_generators(
       correlation_surfaces,
-      sigfunc,
+      |_| 0,// sigfunc,
       &mut HashMap::new(),
       Vec::new(),
       true,
@@ -282,7 +346,7 @@ pub fn find_correlation_surfaces_from_leaf(zx_graph: &Graph, leaf: V) -> Vec<Hal
 }
 
 // pub struct Basis {
-//   contents: Vec<u32, (u32, u32)>
+//   contents: Vec<usize, (usize, usize)>
 // }
 
 // impl Basis {
@@ -291,7 +355,7 @@ pub fn find_correlation_surfaces_from_leaf(zx_graph: &Graph, leaf: V) -> Vec<Hal
 
 //   }
 
-//   pub fn construct_from_items<F>(&mut self, items: Vec<dyn Any>, func: F) where F: Fn(dyn Any) -> u32 {
+//   pub fn construct_from_items<F>(&mut self, items: Vec<dyn Any>, func: F) where F: Fn(dyn Any) -> usize {
 //     todo!("")
 //   }
 

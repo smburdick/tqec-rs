@@ -1,4 +1,4 @@
-use std::{str::FromStr};
+use std::{fmt, str::FromStr};
 use rand::random;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -28,6 +28,12 @@ impl Basis {
   }
 }
 
+impl fmt::Display for Basis {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", if *self == Basis::X {"X"} else {"Z"})
+    }
+}
+
 #[derive(PartialEq, Eq, Hash, Debug, Copy, Clone)]
 pub struct CubePosition {
     x: i32,
@@ -41,6 +47,12 @@ impl CubePosition {
             x: x, y: y, z: z
         }
     }
+}
+
+impl fmt::Display for CubePosition {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    write!(f, "({}, {}, {})", self.x, self.y, self.z)
+  }
 }
 
 #[derive(Hash, Debug, Clone, Eq, PartialEq)]
@@ -83,7 +95,7 @@ impl ZXCube {
   pub fn is_spatial(&self) -> bool {
     self.x == self.y
   }
-  pub fn from_str(rep: &str) -> Result<Self, &'static str> {
+  pub fn from_str(rep: &str) -> Result<Self, String> {
     if ALLOWED_CUBES.contains(&rep) {
       let mut chars = rep.chars();
       Ok(Self {
@@ -92,7 +104,7 @@ impl ZXCube {
         z: Basis::from_str(&chars.next().unwrap().to_string())?
       })
     } else {
-      Err("invalid")
+      Err(format!("Cube with representation {r} is invalid", r=rep.to_string()))
     }
   }
   pub fn num_z_boundaries(&self) -> usize {

@@ -87,7 +87,7 @@ impl BlockGraph {
                 }
                 Ok(to_return)
             },
-            Err(e) => Err(e.to_string()),
+            Err(e) => { println!("Invalid file path"); Err(e.to_string()) },
         }
     }
 
