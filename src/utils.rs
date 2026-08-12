@@ -18,12 +18,14 @@ where
     let mut shift = 0usize;
 
     for (x, bits) in ints.into_iter().zip(bit_lengths) {
-        result |= x << shift;
+        result += x << shift;
         shift += bits;
     }
 
     result
 }
+
+//     return sum(x << shift for x, shift in zip(ints, chain([0], accumulate(bit_length))))
 
 pub fn solve_linear_system(basis: &mut HashMap<usize, (usize, usize)>, x: usize, update_basis: bool) -> Result<Vec<usize>, &'static str> {
   // TODO: decide on the integer types (usize or u64)

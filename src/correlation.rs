@@ -316,20 +316,27 @@ pub fn find_correlation_surfaces_from_leaf(zx_graph: &Graph, leaf: V) -> Vec<Hal
   }
   let open_leaves: bool = leaves.get(&Pauli::I).unwrap().len() > 0;
   leaves.remove_entry(&Pauli::I);
-  println!("Open leaves = {}", open_leaves);
   //let mut correlation_surfaces: Vec<HalfEdgeCorrelationSurface> = Vec::new();
   if leaves.values().map(|m| m.len()).sum::<usize>() > 0 {
-    let sigfunc = |cs: HalfEdgeCorrelationSurface|
-      concat_ints_as_bits(
-    leaves.iter().map(|(pauli, _leaves)|
+    // let sigfunc = |cs: HalfEdgeCorrelationSurface|
+     // concat_ints_as_bits(leaves.iter().map(|(pauli, _leaves)| cs.signature_at_nodes( _leaves.iter().map(|l| *l), |p: Pauli| (p != *pauli && p != Pauli::I) as usize, 1)),  leaves.values().map(|l| l.len() as usize ));
+    let sigfunc  = |cs: HalfEdgeCorrelationSurface| concat_ints_as_bits(
+  leaves
+        .iter()
+        .map(|(pauli, _leaves)| {
             cs.signature_at_nodes(
-        _leaves.iter().map(|l| *l), |p: Pauli| (p != *pauli && p != Pauli::I) as usize, 1)), 
-   leaves.values().map(|l| l.len() as usize
-          ));
+                _leaves.iter().map(|l| *l),
+                |p: Pauli| (p != *pauli && p != Pauli::I) as usize,
+                1,
+            )
+        }),
+    leaves.values().map(|l| l.len() as usize),
+    );
 
+    // FIXME: signature function is probably busted since it wipes out any CSes.
     correlation_surfaces = reform_correlation_surface_generators(
       correlation_surfaces,
-      |_| 0,// sigfunc,
+      sigfunc,
       &mut HashMap::new(),
       Vec::new(),
       true,
