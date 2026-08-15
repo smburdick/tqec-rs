@@ -1,7 +1,7 @@
 use std::{fmt, str::FromStr};
 use rand::random;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd)]
 pub enum Basis {
   X,
   Z,
@@ -34,7 +34,7 @@ impl fmt::Display for Basis {
     }
 }
 
-#[derive(PartialEq, Eq, Hash, Debug, Copy, Clone)]
+#[derive(PartialEq, Eq, Hash, Debug, Copy, Clone, PartialOrd)]
 pub struct CubePosition {
     x: i32,
     y: i32,
@@ -99,9 +99,9 @@ impl ZXCube {
     if ALLOWED_CUBES.contains(&rep) {
       let mut chars = rep.chars();
       Ok(Self {
-        x: Basis::from_str(&chars.next().unwrap().to_string())?,
-        y: Basis::from_str(&chars.next().unwrap().to_string())?,
-        z: Basis::from_str(&chars.next().unwrap().to_string())?
+        x: Basis::from_str(&chars.next().expect("X basis").to_string())?,
+        y: Basis::from_str(&chars.next().expect("Y basis").to_string())?,
+        z: Basis::from_str(&chars.next().expect("Z basis").to_string())?
       })
     } else {
       Err(format!("Cube with representation {r} is invalid", r=rep.to_string()))

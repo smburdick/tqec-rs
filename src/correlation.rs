@@ -7,7 +7,7 @@ use std::{any::Any, collections::{HashMap, HashSet}, iter::{self, repeat}};
 use frozenset::{FrozenSet, Freeze};
 use itertools::{Combinations, Itertools, Position};
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, PartialOrd)]
 pub struct ZXNode {
   position: CubePosition,
   basis: Basis
@@ -35,6 +35,13 @@ pub struct ZXEdge {
 impl ZXEdge {
   pub fn new(u: ZXNode, v: ZXNode) -> Self {
     Self { u: u, v: v}
+  }
+  pub fn sorted(&self) -> Self {
+    if self.u < self.v {
+      *self
+    } else {
+      ZXEdge::new(self.v, self.u)
+    }
   }
 }
 
@@ -99,7 +106,7 @@ impl HalfEdgeCorrelationSurface {
     if paulis.len() == 0 {
       return (None, None, None);
     }
-    let passthru_parity = paulis.iter().copied().reduce(|acc, p| acc.xor(p)).unwrap() == basis;
+    let passthru_parity = paulis.iter().copied().reduce(|acc, p| acc.xor(p)).expect("Passthru parity") == basis;
     let mut valid = true;
     let broadcast_basis = basis.flipped(true);
     let mut syndrome: Vec<bool> = paulis.iter().copied().map(|p| p == broadcast_basis).collect();
@@ -125,7 +132,7 @@ impl HalfEdgeCorrelationSurface {
   }
 
   pub fn paulis_at_nodes(&self, nodes: impl Iterator<Item = V>) -> impl Iterator<Item = Pauli> {
-    // let default_val: HashMap<V, Pauli> = HashMap::new();
+    // TODO: returning no value is okay, right?
     nodes.map(|v| if self.mapping.contains_key(&v) { self.mapping.get(&v).unwrap().values().collect() } else { Vec::new() }).flatten().map(|p| *p)
   }
 
@@ -194,7 +201,7 @@ impl HalfEdgeCorrelationSurface {
         .flat_map(|&x| _vec.iter().map(move |&y| (x, y)))
         .collect();
       for (xz_u, xz_v) in product {
-        if (edge_is_hadamard ^(xz_u == xz_v)) && xz_u == pauli_u && xz_v == pauli_v {
+        if (edge_is_hadamard ^ (xz_u == xz_v)) && xz_u == pauli_u && xz_v == pauli_v {
           let basis_u = bases[(xz_u.value() >> 1) as usize];
           let basis_v = bases[(xz_v.value() >> 1) as usize];
 
@@ -204,7 +211,7 @@ impl HalfEdgeCorrelationSurface {
           let node_v = zx_nodes.entry((v, basis_v))
             .or_insert_with(|| ZXNode::new(pos_v, basis_v)).clone();
 
-          span.push(ZXEdge::new(node_u, node_v)); // TODO: sort the nodes, not sure how to do that rn.
+          span.push(ZXEdge::new(node_u, node_v).sorted());
         }
       }
     }
@@ -305,7 +312,6 @@ where
 
 pub fn find_correlation_surfaces_from_leaf(zx_graph: &Graph, leaf: V) -> Vec<HalfEdgeCorrelationSurface> {
   let mut correlation_surfaces = PositionedZX::find_correlation_surface_generating_set_from_leaf(zx_graph, leaf);
-  println!("# Correlation sfcs from leaf = {}", correlation_surfaces.len());
   let mut leaves: HashMap<Pauli, Vec<V>> = HashMap::new();
   for p in Pauli::vec_ixyz() {
     leaves.insert(p, Vec::new());

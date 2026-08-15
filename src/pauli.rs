@@ -24,6 +24,10 @@ impl Pauli {
     vec![Pauli::I, Pauli::X, Pauli::Y, Pauli::Z]
   }
 
+  pub fn vec_xz() -> Vec<Self> {
+    vec![Pauli::X, Pauli::Z]
+  }
+
   pub fn flipped(&self, condition: bool) -> Self {
     if condition { 
       match self {

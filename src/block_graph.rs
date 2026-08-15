@@ -39,7 +39,7 @@ impl BlockGraph {
                 let mut cubeIdToNodeIndex: HashMap<String, NodeIndex> = HashMap::new();
                 for (index, line) in reader.lines().enumerate() {
                     // TODO: skip header and metadata
-                    let _line = line.unwrap();
+                    let _line = line.expect("Missing line");
                     if _line.len() == 1 || _line.is_empty() {
                         continue;
                     }
@@ -59,9 +59,9 @@ impl BlockGraph {
                         let cube_id: &str = items[0];
                         // TODO: when cube is added to the graph, map its cube
                         // id to its NodeIndex, then use that to link up the pipes
-                        let x_coord: i32 = items[1].parse().unwrap();
-                        let y_coord: i32 = items[2].parse().unwrap();
-                        let z_coord: i32 = items[3].parse().unwrap();
+                        let x_coord: i32 = items[1].parse().expect("X coordinate");
+                        let y_coord: i32 = items[2].parse().expect("Ycoordinate.");
+                        let z_coord: i32 = items[3].parse().expect("Z coordinate");
                         let kind: String = items[4].to_uppercase();
                         // FIXME: need to generate the correct kind of cube here.
                         // ZXCube, YHalfCube, Port

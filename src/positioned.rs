@@ -27,7 +27,6 @@ impl PositionedZX {
       let (u, v) = block_graph.spanning_cubes_of(pipe);
       graph.add_edge_with_type(*bg2zx.get(u).unwrap(), *bg2zx.get(v).unwrap(), edge_type);
     }
-    println!("Graph data: {} {}", graph.num_vertices(), graph.num_edges());
     Self {
       graph: graph,
       positions: zx2bg
@@ -101,20 +100,17 @@ impl PositionedZX {
       if leaves.len() == 0 {
         return Err("The graph must contain at least one leaf node to find correlation surfaces.");
       }
-      // TODO: find correlation surfaces for each connected component in the graph
       // We don't support vertex ordering yet!
-
-      let _c = self.as_connected_components();
-      for c in _c {
-        println!("Component has #v = {} and #e = {}", c.num_vertices(), c.num_edges());
-      }
-
       let components: Vec<(Graph, V)> = self.as_connected_components()
         .iter()
         .map(|component: &Graph| (component.clone(), component.vertices().filter(|v| component.degree(*v) == 1).min().unwrap()))
         .collect();
 
-      let half_edge_cs: Vec<HalfEdgeCorrelationSurface> = components.iter().map(|(g, v)| find_correlation_surfaces_from_leaf(g, *v)).flatten().collect();
+      let half_edge_cs: Vec<HalfEdgeCorrelationSurface> = components.iter()
+        .map(|(g, v)| find_correlation_surfaces_from_leaf(g, *v))
+        .flatten()
+        .collect();
+      // TODO: compute the product of these correlation surfaces.
       Ok(half_edge_cs.iter().map(|cs| cs.to_immutable_public_representation(self)).collect::<Vec<CorrelationSurface>>())
   }
 
@@ -180,7 +176,7 @@ impl PositionedZX {
     let neighbor = graph.neighbors(leaf).next().unwrap();
     // correlation_surfaces owns the data of each surface so the rest have to be borrowed via references
     // other vectors used here are temporary.
-    let mut correlation_surfaces: Vec<HalfEdgeCorrelationSurface> = Pauli::vec_ixyz()
+    let mut correlation_surfaces: Vec<HalfEdgeCorrelationSurface> = Pauli::vec_xz()
       .into_iter()
       .map(|pauli: Pauli| {
           let mut cs: HalfEdgeCorrelationSurface = HalfEdgeCorrelationSurface::new();
@@ -197,22 +193,23 @@ impl PositionedZX {
     let mut explored_leaves: Vec<V> = vec![leaf];
     let mut explored_nodes: HashSet<V> = HashSet::new();
     explored_nodes.insert(leaf);
+    let mut correlation_surface: HalfEdgeCorrelationSurface = HalfEdgeCorrelationSurface::new(); // default value, don't intend to actually use this
 
-    // let mut correlation_surface: HalfEdgeCorrelationSurface;
-
-    let func = |p: Pauli| p.value();
-    println!("entering while frontier len > 0, cs len = {}", correlation_surfaces.len());
+    let pauli_value = |p: Pauli| p.value(); // used in sub functions.
     while frontier.len() > 0 {
       if let Some(current_node) = frontier.pop() {
         if correlation_surfaces.len() == 0 {
           break;
         }
-        let mut correlation_surface = correlation_surfaces.pop().unwrap();
+        correlation_surface = correlation_surfaces.pop().expect("CorrelationSurface");
         let map =  correlation_surface.clone().mapping;
+
         let default_val: HashMap<V, Pauli> = HashMap::new();
-        let connected_neighbors = map.get(&current_node).unwrap_or(&default_val);
+
+        let connected_neighbors: Vec<V> = map.get(&current_node).expect("Connected neighbors").keys().map(|&a| a).collect::<Vec<V>>();
+
         let unconnected_neighbors: Vec<V> = graph.neighbors(current_node)
-          .filter(|v| !connected_neighbors.contains_key(v))
+          .filter(|v| !connected_neighbors.contains(v))
           .collect();
         let mut boundary_nodes: Vec<V> = explored_leaves.iter()
           .chain(frontier.iter()).copied().collect();
@@ -244,7 +241,7 @@ impl PositionedZX {
             continue;
           }
           let bd = boundary_nodes.clone();
-          let x = correlation_surface.signature_at_nodes(bd.into_iter(), func, 2);
+          let x = correlation_surface.signature_at_nodes(bd.into_iter(), pauli_value, 2);
           if solve_linear_system(&mut vector_basis, x, false).unwrap().len() == 0 {
             // TODO: replace cs.clone() with Rc::clone() invocations for better scalability.
             if !p.is_none() && !b.is_none() {
@@ -277,7 +274,7 @@ impl PositionedZX {
                   .chain(sole_cs.into_iter())
                   .collect();
               let new_correlation_surface = HalfEdgeCorrelationSurface::xor(input);
-              if solve_linear_system(&mut vector_basis, new_correlation_surface.signature_at_nodes(boundary_nodes.clone().into_iter(), func, 1), true).is_ok() {
+              if solve_linear_system(&mut vector_basis, new_correlation_surface.signature_at_nodes(boundary_nodes.clone().into_iter(), pauli_value, 1), true).is_ok() {
                 let (u, b, _) = new_correlation_surface.validate_node(current_node, passthrough_basis, unconnected_neighbors.len() > 0);
                 valid_surfaces.push((new_correlation_surface, u.unwrap(), b.unwrap()));
                 break;
@@ -301,25 +298,22 @@ impl PositionedZX {
             false
         ).into_iter()).flatten().collect();
 
-        let _cs = correlation_surfaces.pop();
-        if _cs.is_none() {
-          return Vec::new();
-        } else {
-          correlation_surface = _cs.unwrap();
-          unconnected_neighbors.iter().filter(|n| !explored_nodes.contains(*n) && graph.degree(**n) > 1).for_each(|n| frontier.push(*n));
-          unexplored_neighbors.iter().filter(|n| graph.degree(**n) == 1).for_each(|n| explored_leaves.push(*n));
-          explored_nodes.insert(current_node);
-        }
-        if frontier.len() == 0 { // final loop iteration
-          correlation_surfaces.push(correlation_surface);
-        }
+      
+        unconnected_neighbors.iter().filter(|n| !explored_nodes.contains(*n) && graph.degree(**n) > 1).for_each(|n| frontier.push(*n));
+        unexplored_neighbors.iter().filter(|n| graph.degree(**n) == 1).for_each(|n| explored_leaves.push(*n));
+        explored_nodes.insert(current_node);
+
       }
     }
-
+    if correlation_surface.mapping.len() > 0 { // check if filled w/ meaningful value
+      correlation_surfaces.push(correlation_surface);
+    }
+    // FIXME: some of the correlation surfaces are getting lost here (compared w/ python vers)
+    // Need to fix the above loop assuming correct inputs.
     return reform_correlation_surface_generators(
       correlation_surfaces,
       |cs| cs.signature_at_nodes(
-        graph.vertices().filter(|v| graph.degree(*v) == 1), func, 2
+        graph.vertices().filter(|v| graph.degree(*v) == 1), pauli_value, 2
       ),
       &mut HashMap::new(),
       Vec::new(),
