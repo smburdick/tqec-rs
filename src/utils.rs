@@ -64,7 +64,8 @@ fn usize_bit_len(x: usize) -> usize {
 }
 
 pub fn zx_to_pauli(g: &Graph, v: V) -> Pauli {
-  let res= vertex_type_to_pauli(g.vertex_type(v), g.phase(v));
+  let (vt, phase) = (g.vertex_type(v), g.phase(v));
+  let res= vertex_type_to_pauli(vt, phase);
   if res.is_ok() {
     res.unwrap()
   } else {

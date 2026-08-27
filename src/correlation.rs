@@ -1,11 +1,9 @@
-use petgraph::graph::Frozen;
-use quizx::{detection_webs::PauliWeb, graph::{GraphLike, V}, vec_graph::Graph};
+use quizx::{graph::{GraphLike, V}, vec_graph::Graph};
 
 use crate::{cube::{Basis, CubePosition}, pauli::Pauli, positioned::PositionedZX, utils::{concat_ints_as_bits, solve_linear_system, zx_to_pauli}};
 use core::fmt;
-use std::{any::Any, collections::{HashMap, HashSet}, iter::{self, repeat}};
-use frozenset::{FrozenSet, Freeze};
-use itertools::{Combinations, Itertools, Position};
+use std::{collections::{HashMap, HashSet}, iter::self};
+use itertools::Itertools;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, PartialOrd)]
 pub struct ZXNode {
@@ -174,6 +172,10 @@ impl HalfEdgeCorrelationSurface {
       result
   }
 
+  // pub fn product_of_disconnected_surfaces(cs_list: Vec<Vec<HalfEdgeCorrelationSurface>>) -> Vec<CorrelationSurfaceView> {
+  //   // Find Cartesian product of 
+  // }
+
   pub fn to_immutable_public_representation(&self, graph: &PositionedZX) -> CorrelationSurface {
     if self.is_single_node() {
       let u_id = self.mapping.iter().next().unwrap().0;
@@ -191,7 +193,11 @@ impl HalfEdgeCorrelationSurface {
     let bases = vec![Basis::X, Basis::Z];
     for (u, v, _) in graph.edges() {
       // TODO: use alternatives to unwrap.
-      let pauli_u = *self.mapping.get(&u).unwrap().get(&v).unwrap();
+      // FIXME: program crashes at this line.
+      let pauli_u = *self.mapping.get(&u)
+        .expect(&format!("Pauli map of node {}", u))
+        .get(&v)
+        .expect(&format!("Pauli corresponding to {} -> {}", u, v));
       let pauli_v = *self.mapping.get(&v).unwrap().get(&u).unwrap();
       let edge_is_hadamard = graph.edge_is_hadamard((u, v));
       let pos_u = graph.get_cube_at(u).unwrap().position();
@@ -316,12 +322,15 @@ pub fn find_correlation_surfaces_from_leaf(zx_graph: &Graph, leaf: V) -> Vec<Hal
   for p in Pauli::vec_ixyz() {
     leaves.insert(p, Vec::new());
   }
-  for v in zx_graph.vertices().filter(|v| zx_graph.degree(*v) == 1) {
-    let mut p: Pauli = zx_to_pauli(zx_graph, v).flipped(true);
-    leaves.get_mut(&p).unwrap().push(v);
+  let vertices: Vec<V> = zx_graph.vertices().filter(|v| zx_graph.degree(*v) == 1).collect();
+  for v in vertices.iter().sorted() {
+    let mut key: Pauli = zx_to_pauli(zx_graph, *v).flipped(true);
+    leaves.get_mut(&key).unwrap().push(*v);
   }
+
   let open_leaves: bool = leaves.get(&Pauli::I).unwrap().len() > 0;
   leaves.remove_entry(&Pauli::I);
+
   //let mut correlation_surfaces: Vec<HalfEdgeCorrelationSurface> = Vec::new();
   if leaves.values().map(|m| m.len()).sum::<usize>() > 0 {
     // let sigfunc = |cs: HalfEdgeCorrelationSurface|

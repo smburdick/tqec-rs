@@ -1,5 +1,6 @@
 use std::{collections::{HashMap, HashSet}};
 
+use itertools::Itertools;
 use quizx::{graph::{EType, GraphLike, V, VType, VData}, vec_graph::Graph, phase::Phase};
 
 use crate::{block_graph::BlockGraph, correlation::{CorrelationSurface, HalfEdgeCorrelationSurface, ZXEdge, ZXNode, expand_correlation_surface_to_node, find_correlation_surfaces_from_leaf, reform_correlation_surface_generators}, cube::{Cube, CubeKind}, pauli::Pauli, utils::solve_linear_system}; // TODO: decide which kind of graph to use (vec or hash)
@@ -22,7 +23,8 @@ impl PositionedZX {
       zx2bg.insert(v, cube.clone());
       bg2zx.insert(cube.clone(), v);
     }
-    for pipe in block_graph.pipes() {
+    let pipes = block_graph.pipes();
+    for pipe in pipes {
       let edge_type = if pipe.has_hadamard() { EType::H } else { EType::N };
       let (u, v) = block_graph.spanning_cubes_of(pipe);
       graph.add_edge_with_type(*bg2zx.get(u).unwrap(), *bg2zx.get(v).unwrap(), edge_type);
@@ -101,17 +103,25 @@ impl PositionedZX {
         return Err("The graph must contain at least one leaf node to find correlation surfaces.");
       }
       // We don't support vertex ordering yet!
+      // FIXME: somewhere, where the connected components are being made,
+      // Vertices seem to be changing pauli type
       let components: Vec<(Graph, V)> = self.as_connected_components()
         .iter()
         .map(|component: &Graph| (component.clone(), component.vertices().filter(|v| component.degree(*v) == 1).min().unwrap()))
         .collect();
 
-      let half_edge_cs: Vec<HalfEdgeCorrelationSurface> = components.iter()
+      let half_edge_cs: Vec<Vec<HalfEdgeCorrelationSurface>> = vec![components.iter()
         .map(|(g, v)| find_correlation_surfaces_from_leaf(g, *v))
         .flatten()
-        .collect();
+        .collect()];
       // TODO: compute the product of these correlation surfaces.
-      Ok(half_edge_cs.iter().map(|cs| cs.to_immutable_public_representation(self)).collect::<Vec<CorrelationSurface>>())
+      // let res: Vec<HalfEdgeCorrelationSurface> = product_of_disconnected_cs();
+      //
+      todo!("");
+      // Ok(res.iter()
+      //   .map(|cs| cs.to_immutable_public_representation(self))
+      //   .collect::<Vec<CorrelationSurface>>()
+      // )
   }
 
   fn as_connected_components(&self) -> Vec<Graph> {
@@ -149,11 +159,12 @@ impl PositionedZX {
       let mut subgraph = Graph::new();
       // let mut input_vertices = HashMap::new();
       // let mut output_vertices = HashMap::new();
-      for v in vertices.iter() {
+      for v in vertices.iter().sorted() {
         let mut data: VData = VData::default();
         data.phase = self.graph.phase(*v);
         data.ty = self.graph.vertex_type(*v);
         subgraph.add_vertex_with_data(data);
+        // subgraph.add_vertex_with_phase(self.graph.vertex_type(*v), self.graph.phase(*v));
       }
       for v in vertices.iter() {
         for u in self.graph.neighbor_vec(*v).iter() {
