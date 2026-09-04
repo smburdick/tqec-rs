@@ -342,7 +342,6 @@ where
 
 pub fn find_correlation_surfaces_from_leaf(zx_graph: &Graph, leaf: V) -> Vec<HalfEdgeCorrelationSurface> {
   let mut correlation_surfaces = PositionedZX::find_correlation_surface_generating_set_from_leaf(zx_graph, leaf);
-  println!("Correlation surfaces = {:?}", correlation_surfaces);
   let mut leaves: HashMap<Pauli, Vec<V>> = HashMap::new();
   for p in Pauli::vec_ixyz() {
     leaves.insert(p, Vec::new());

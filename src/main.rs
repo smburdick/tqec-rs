@@ -14,7 +14,7 @@ fn main() {
       bg.find_correlation_surfaces()
         .into_iter()
         .for_each(|cs: correlation::CorrelationSurface| {
-          println!("{}", cs.to_string());
+          println!("{:?}", cs.to_string());
         });
     },
     Err(msg) => println!("{}", msg)

@@ -117,18 +117,15 @@ impl PositionedZX {
         .map(|component: &Graph| (component.clone(), component.vertices().filter(|v| component.degree(*v) == 1).min().unwrap()))
         .collect();
 
-      let half_edge_cs: Vec<Vec<HalfEdgeCorrelationSurface>> = vec![components.iter()
-        .map(|(g, v)| find_correlation_surfaces_from_leaf(g, *v))
+      let result: Vec<CorrelationSurface> = components.iter()
+        .map(|(g, v)| find_correlation_surfaces_from_leaf(g, *v).into_iter())
+        .multi_cartesian_product()
         .flatten()
-        .collect()];
-      // TODO: compute the product of these correlation surfaces.
-      // let res: Vec<HalfEdgeCorrelationSurface> = product_of_disconnected_cs();
-      //
-      Ok(Vec::new())
-      // Ok(res.iter()
-      //   .map(|cs| cs.to_immutable_public_representation(self))
-      //   .collect::<Vec<CorrelationSurface>>()
-      // )
+        .map(|cs| cs.to_immutable_public_representation(self))
+        .collect();
+        
+      Ok(result)
+
   }
 
   fn as_connected_components(&self) -> Vec<Graph> {
@@ -352,9 +349,6 @@ impl PositionedZX {
       correlation_surfaces.push(correlation_surface);
     }
 
-    println!("CSes pre reform = {:?}", correlation_surfaces);
-
-    // FIXME: *one* of the correlation surfaces is getting mixed up.
     return reform_correlation_surface_generators(
       correlation_surfaces,
       |cs| cs.signature_at_nodes(
