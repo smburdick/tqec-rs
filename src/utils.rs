@@ -5,7 +5,6 @@ use quizx::{graph::{GraphLike, V}, vec_graph::Graph};
 use crate::{pauli::Pauli, positioned::vertex_type_to_pauli};
 
 
-
 pub fn concat_ints_as_bits<I, B>(
     ints: I,
     bit_lengths: B,
@@ -27,6 +26,7 @@ where
 
 //     return sum(x << shift for x, shift in zip(ints, chain([0], accumulate(bit_length))))
 
+// FIXME: in the case where x = 10, should return zero, when it's currently not.
 pub fn solve_linear_system(basis: &mut HashMap<usize, (usize, usize)>, x: usize, update_basis: bool) -> Result<Vec<usize>, &'static str> {
   // TODO: decide on the integer types (usize or u64)
   let mut mask: usize = 1 << basis.keys().len();
@@ -35,16 +35,13 @@ pub fn solve_linear_system(basis: &mut HashMap<usize, (usize, usize)>, x: usize,
     let highest_bit: usize = usize_bit_len(_x) - 1;
     if !basis.contains_key(&highest_bit) {
       if update_basis {
-        basis.insert(highest_bit, (x, mask));
+        basis.insert(highest_bit, (_x, mask));
       }
-      return Ok(Vec::new());
+      return Err("Is this really an error?"); 
     }
-    if let Some((pivot, pivot_mask)) = basis.get(&highest_bit) {
-      _x ^= *pivot;
-      mask ^= *pivot_mask;
-    } else {
-      return Err("Basis is not solvable.");
-    }
+    let (pivot, pivot_mask) = basis.get(&highest_bit).expect("Missing Basis bro");
+    _x ^= *pivot;
+    mask ^= *pivot_mask;
   }
   Ok(int_to_bit_indices(mask).into_iter().rev().collect())
 }

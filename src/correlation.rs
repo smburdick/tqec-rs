@@ -2,7 +2,7 @@ use quizx::{graph::{GraphLike, V}, vec_graph::Graph};
 
 use crate::{cube::{Basis, CubePosition}, pauli::Pauli, positioned::PositionedZX, utils::{concat_ints_as_bits, solve_linear_system, zx_to_pauli}};
 use core::fmt;
-use std::{collections::{HashMap, HashSet}, iter::self};
+use std::{collections::{HashMap, HashSet}, iter::{self, repeat}};
 use itertools::Itertools;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, PartialOrd)]
@@ -72,7 +72,7 @@ impl fmt::Display for CorrelationSurface {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct HalfEdgeCorrelationSurface {
  pub mapping: HashMap<V, HashMap<V, Pauli>>
 }
@@ -91,8 +91,8 @@ impl HalfEdgeCorrelationSurface {
     let (u, v) = edge;
     for (from, to, p) in [
       (u, v, pauli),
-      (v, u, pauli.flipped(edge_is_hadamard))]
-    {
+      (v, u, pauli.flipped(edge_is_hadamard))
+    ] {
         self.mapping.entry(from)
           .or_default()
           .insert(to, p);
@@ -104,11 +104,17 @@ impl HalfEdgeCorrelationSurface {
     if paulis.len() == 0 {
       return (None, None, None);
     }
-    let passthru_parity = paulis.iter().copied().reduce(|acc, p| acc.xor(p)).expect("Passthru parity") == basis;
+
+    let passthru_parity = paulis.iter()
+      .copied()
+      .reduce(|acc, p| acc.xor(p))
+      .expect("Passthru parity") == basis;
+
     let mut valid = true;
     let broadcast_basis = basis.flipped(true);
     let mut syndrome: Vec<bool> = paulis.iter().copied().map(|p| p == broadcast_basis).collect();
     let mut broadcast_pauli: Pauli = Pauli::I;
+
     if syndrome.iter().all(|&b| b) {
       broadcast_pauli = broadcast_basis;
     } else if syndrome.iter().all(|&b| !b) {
@@ -116,28 +122,33 @@ impl HalfEdgeCorrelationSurface {
     } else {
       valid = false;
     }
+
     if !has_unconnected_neighbors {
       syndrome.push(passthru_parity);
       if passthru_parity {
         valid = false;
       }
     }
+
     if valid {
       return (Some(broadcast_pauli), Some(passthru_parity), None);
     } else {
-      return (None, None, Some(concat_ints_as_bits(syndrome.iter().map(|&b| b as usize), 1..)))
+      return (None, None, Some(concat_ints_as_bits(syndrome.iter().map(|&b| b as usize), repeat(1))))
     }
   }
 
   pub fn paulis_at_nodes(&self, nodes: impl Iterator<Item = V>) -> impl Iterator<Item = Pauli> {
-    // TODO: returning no value is okay, right?
-    nodes.map(|v| if self.mapping.contains_key(&v) { self.mapping.get(&v).unwrap().values().collect() } else { Vec::new() }).flatten().map(|p| *p)
+    nodes.into_iter().map(|v| self.mapping.get(&v)
+        .expect(&format!("Missing mapping for vertex {}", v))
+        .values()
+      ).flatten()
+      .map(|&p| p)
   }
 
   pub fn signature_at_nodes<F>(&self, nodes: impl Iterator<Item = V>, func: F, bit_length: usize) -> usize where F: Fn(Pauli) -> usize {
     let paulis = self.paulis_at_nodes(nodes);
     let ints = paulis.map(|x|  func(x));
-    concat_ints_as_bits(ints, bit_length..)
+    concat_ints_as_bits(ints, repeat(bit_length))
   }
 
   pub fn xor(cses: Vec<&Self>) -> Self {
@@ -259,20 +270,32 @@ pub fn expand_correlation_surface_to_node(
   always_copy: bool
 ) -> Vec<HalfEdgeCorrelationSurface> { // TODO: python version uses generator instead, consider using that.
   let mut new_correlation_surfaces: Vec<HalfEdgeCorrelationSurface> = Vec::new();
-  let cs = correlation_surface.clone();
-  for (i, out_paulis) in generate_valid_local_paulis(node_basis, broadcast_pauli, passthrough_parity, unconnected_neighbors.len(), generate_all).iter().enumerate() {
-    let mut new_correlation_surface: HalfEdgeCorrelationSurface = correlation_surface.clone();
-    if i != 0 || always_copy {
-      new_correlation_surface.mapping.insert(node, new_correlation_surface.mapping.get(&node).unwrap().clone());
-    }
-    for (n, pauli, edge_is_hadamard) in unconnected_neighbors.iter().zip(out_paulis.iter()).zip(edges_are_hadamard.iter()).map(|((x, y), z)| (x, y, z)) {
-      if (i > 0 || always_copy) && cs.mapping.contains_key(n) {
-        new_correlation_surface.mapping.insert(*n, cs.mapping.get(n).unwrap().clone());
+  for (i, out_paulis) in generate_valid_local_paulis(
+    node_basis,
+    broadcast_pauli,
+    passthrough_parity,
+  unconnected_neighbors.len(),
+    generate_all
+  ).iter().enumerate() {
+    // FIXME: this method doesn't really make a lot of sense, I am probably misunderstanding it
+    let mut new_correlation_surface = correlation_surface.clone();
+    // if i != 0 || always_copy {
+    //   new_correlation_surface.mapping.insert(node, new_correlation_surface.mapping.get(&node).unwrap().clone());
+    // }
+    for (n, pauli, edge_is_hadamard) in unconnected_neighbors
+      .iter()
+      .zip(out_paulis.iter())
+      .zip(edges_are_hadamard.iter())
+      .map(|((x, y), z)| (x, y, z))
+    {
+      if (i > 0 || always_copy) && correlation_surface.mapping.contains_key(n) {
+        new_correlation_surface.mapping.insert(*n, correlation_surface.mapping.get(n).unwrap().clone());
       }
       new_correlation_surface.add_pauli_to_edge((node, *n), *pauli, *edge_is_hadamard);
     }
     new_correlation_surfaces.push(new_correlation_surface);
   }
+  // println!("{:?}", new_correlation_surfaces);
   new_correlation_surfaces
 }
 
@@ -289,13 +312,14 @@ pub fn reform_correlation_surface_generators<F>(
     Vec<HalfEdgeCorrelationSurface>,
 )
 where
-    F: Fn(HalfEdgeCorrelationSurface) -> usize,
+    F: Fn(&HalfEdgeCorrelationSurface) -> usize,
 {
   let mut new_basis_surfaces: Vec<HalfEdgeCorrelationSurface> = basis_surfaces.clone();
   let mut new_surfaces: Vec<HalfEdgeCorrelationSurface> = Vec::new();
   for cs in correlation_surfaces {
-    let indices = solve_linear_system(stabilizer_basis, signature_func(cs.clone()), true);
-    if (indices.is_ok() && indices.clone().unwrap().len() == 0) || indices.is_err() {
+    let x = signature_func(&cs);
+    let indices = solve_linear_system(stabilizer_basis, x, true);
+    if indices.is_err() {
       new_basis_surfaces.push(cs);
       if num_basis_surfaces_needed > 0 && basis_surfaces.len() > num_basis_surfaces_needed {
         break;
@@ -308,7 +332,7 @@ where
       let _bscs = basis_surfaces.iter().chain(_vec.iter()).collect();
       let _new_cs = HalfEdgeCorrelationSurface::xor(_bscs);
       new_surfaces.push(_new_cs);
-      if num_new_surfaces_needed > 0 && new_surfaces.len() > num_new_surfaces_needed {
+      if num_new_surfaces_needed > 0 && new_surfaces.len() >= num_new_surfaces_needed {
         break;
       }
     }
@@ -318,6 +342,7 @@ where
 
 pub fn find_correlation_surfaces_from_leaf(zx_graph: &Graph, leaf: V) -> Vec<HalfEdgeCorrelationSurface> {
   let mut correlation_surfaces = PositionedZX::find_correlation_surface_generating_set_from_leaf(zx_graph, leaf);
+  println!("Correlation surfaces = {:?}", correlation_surfaces);
   let mut leaves: HashMap<Pauli, Vec<V>> = HashMap::new();
   for p in Pauli::vec_ixyz() {
     leaves.insert(p, Vec::new());
@@ -331,24 +356,19 @@ pub fn find_correlation_surfaces_from_leaf(zx_graph: &Graph, leaf: V) -> Vec<Hal
   let open_leaves: bool = leaves.get(&Pauli::I).unwrap().len() > 0;
   leaves.remove_entry(&Pauli::I);
 
-  //let mut correlation_surfaces: Vec<HalfEdgeCorrelationSurface> = Vec::new();
   if leaves.values().map(|m| m.len()).sum::<usize>() > 0 {
-    // let sigfunc = |cs: HalfEdgeCorrelationSurface|
-     // concat_ints_as_bits(leaves.iter().map(|(pauli, _leaves)| cs.signature_at_nodes( _leaves.iter().map(|l| *l), |p: Pauli| (p != *pauli && p != Pauli::I) as usize, 1)),  leaves.values().map(|l| l.len() as usize ));
-    let sigfunc  = |cs: HalfEdgeCorrelationSurface| concat_ints_as_bits(
-  leaves
+    let sigfunc  = |cs: &HalfEdgeCorrelationSurface| concat_ints_as_bits(
+  leaves.clone()
         .iter()
         .map(|(pauli, _leaves)| {
             cs.signature_at_nodes(
-                _leaves.iter().map(|l| *l),
+                _leaves.iter().sorted().map(|l| *l),
                 |p: Pauli| (p != *pauli && p != Pauli::I) as usize,
                 1,
             )
         }),
-    leaves.values().map(|l| l.len() as usize),
+    leaves.values().sorted().map(|l| l.len() as usize),
     );
-
-    // FIXME: signature function is probably busted since it wipes out any CSes.
     correlation_surfaces = reform_correlation_surface_generators(
       correlation_surfaces,
       sigfunc,
@@ -363,7 +383,6 @@ pub fn find_correlation_surfaces_from_leaf(zx_graph: &Graph, leaf: V) -> Vec<Hal
   if open_leaves {
     todo!("")
   }
-
   correlation_surfaces
 }
 

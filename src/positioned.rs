@@ -1,14 +1,21 @@
-use std::{collections::{HashMap, HashSet}};
+use std::{cell::RefCell, collections::{HashMap, HashSet}, rc::Rc};
 
 use itertools::Itertools;
 use quizx::{graph::{EType, GraphLike, V, VType, VData}, vec_graph::Graph, phase::Phase};
 
-use crate::{block_graph::BlockGraph, correlation::{CorrelationSurface, HalfEdgeCorrelationSurface, ZXEdge, ZXNode, expand_correlation_surface_to_node, find_correlation_surfaces_from_leaf, reform_correlation_surface_generators}, cube::{Cube, CubeKind}, pauli::Pauli, utils::solve_linear_system}; // TODO: decide which kind of graph to use (vec or hash)
+use crate::{block_graph::BlockGraph, correlation::{self, CorrelationSurface, HalfEdgeCorrelationSurface, ZXEdge, ZXNode, expand_correlation_surface_to_node, find_correlation_surfaces_from_leaf, reform_correlation_surface_generators}, cube::{Cube, CubeKind}, pauli::Pauli, utils::solve_linear_system}; // TODO: decide which kind of graph to use (vec or hash)
 
 pub struct PositionedZX {
   /// Conversion of BlockGraph into PyZX structures
   graph: Graph,
   positions: HashMap<V, Cube> // V is alias of usize
+}
+
+struct CSID(usize);
+struct CorrelationSurfaceTracker {
+  correlation_surfaces: Vec<HalfEdgeCorrelationSurface>,
+  valid_surfaces: Vec<CSID>,
+  invalid_surfaces: Vec<CSID>
 }
 
 impl PositionedZX {
@@ -117,7 +124,7 @@ impl PositionedZX {
       // TODO: compute the product of these correlation surfaces.
       // let res: Vec<HalfEdgeCorrelationSurface> = product_of_disconnected_cs();
       //
-      todo!("");
+      Ok(Vec::new())
       // Ok(res.iter()
       //   .map(|cs| cs.to_immutable_public_representation(self))
       //   .collect::<Vec<CorrelationSurface>>()
@@ -182,12 +189,11 @@ impl PositionedZX {
     (subgraphs, Vec::new()) // TODO: add input/output vertices
   }
 
-  // TODO: this should take a ZXGraph (a connected subgraph component) instead of a positionedZX object
   pub fn find_correlation_surface_generating_set_from_leaf(graph: &Graph, leaf: V) -> Vec<HalfEdgeCorrelationSurface> {
     let neighbor = graph.neighbors(leaf).next().unwrap();
     // correlation_surfaces owns the data of each surface so the rest have to be borrowed via references
     // other vectors used here are temporary.
-    let mut correlation_surfaces: Vec<HalfEdgeCorrelationSurface> = Pauli::vec_xz()
+    let mut correlation_surfaces: Vec<HalfEdgeCorrelationSurface>= [Pauli::X, Pauli::Z]
       .into_iter()
       .map(|pauli: Pauli| {
           let mut cs: HalfEdgeCorrelationSurface = HalfEdgeCorrelationSurface::new();
@@ -204,100 +210,114 @@ impl PositionedZX {
     let mut explored_leaves: Vec<V> = vec![leaf];
     let mut explored_nodes: HashSet<V> = HashSet::new();
     explored_nodes.insert(leaf);
-    let mut correlation_surface: HalfEdgeCorrelationSurface = HalfEdgeCorrelationSurface::new(); // default value, don't intend to actually use this
+    let mut correlation_surface = correlation_surfaces.remove(0);
 
     let pauli_value = |p: Pauli| p.value(); // used in sub functions.
     while frontier.len() > 0 {
-      if let Some(current_node) = frontier.pop() {
-        if correlation_surfaces.len() == 0 {
-          break;
-        }
-        correlation_surface = correlation_surfaces.pop().expect("CorrelationSurface");
-        let map =  correlation_surface.clone().mapping;
+        let current_node = frontier.remove(0);
+        let map = correlation_surface.mapping.clone();
 
-        let default_val: HashMap<V, Pauli> = HashMap::new();
-
-        let connected_neighbors: Vec<V> = map.get(&current_node).expect("Connected neighbors").keys().map(|&a| a).collect::<Vec<V>>();
+        let connected_neighbors: Vec<V> = map.get(&current_node)
+          .expect("Connected neighbors")
+          .keys()
+          .map(|&a| a).collect::<Vec<V>>();
 
         let unconnected_neighbors: Vec<V> = graph.neighbors(current_node)
           .filter(|v| !connected_neighbors.contains(v))
           .collect();
+
         let mut boundary_nodes: Vec<V> = explored_leaves.iter()
-          .chain(frontier.iter()).copied().collect();
+          .chain(frontier.iter())
+          .copied()
+          .collect();
 
         if unconnected_neighbors.len() > 0 {
           boundary_nodes.push(current_node);
         }
 
-        let generating_set_sz: usize = boundary_nodes.iter() 
-          .map(|n| map.get(&n).unwrap_or(&default_val).keys().len())
+        let generating_set_sz: usize = boundary_nodes.clone().iter() 
+          .map(|n| map.get(&n).unwrap_or(&HashMap::new()).keys().len())
           .sum();
-        let unexplored_neighbors: Vec<V> = unconnected_neighbors.clone().into_iter().filter(|n| !map.contains_key(n)).collect();
-        let passthrough_basis: Pauli = vertex_type_to_pauli(graph.vertex_type(current_node), graph.phase(current_node)).unwrap();
+
+        let unexplored_neighbors: Vec<V> = unconnected_neighbors.clone()
+          .into_iter()
+          .filter(|n| !map.contains_key(n))
+          .collect();
+        
+        let passthrough_basis: Pauli = vertex_type_to_pauli(
+      graph.vertex_type(current_node), 
+            graph.phase(current_node)
+          )
+          .expect(&format!("passthru parity of node {}", current_node));
+
         // check if each correlation surface candidate satisfies broadcast and passthrough rules
         // on the current node and is not a product of previously checked valid correlation surfaces
-        let mut valid_surfaces: Vec<(HalfEdgeCorrelationSurface, Pauli, bool)> = Vec::new();
-        let mut invalid_surfaces: Vec<HalfEdgeCorrelationSurface> = Vec::new();
-        let mut syndromes: Vec<usize> = Vec::new();
-        let mut vector_basis = HashMap::new();
-        let mut cs_refs = correlation_surfaces.clone();
-        cs_refs.push(correlation_surface.clone());
-        let sole_cs = [&correlation_surface];
 
-        for cs in cs_refs {
-          let (p, b, u) = cs.validate_node(current_node, passthrough_basis, unconnected_neighbors.len() > 0);
+        let mut valid_surfaces: Vec<(HalfEdgeCorrelationSurface, Pauli, bool)> = Vec::new();
+        let mut invalid_surfaces: Vec<(HalfEdgeCorrelationSurface, usize)> = Vec::new();
+        let mut vector_basis: HashMap<usize, (usize, usize)> = HashMap::new();
+
+        for cs in ([correlation_surface].into_iter()).chain(correlation_surfaces) {
+
+          let (p, b, u) = cs
+              .validate_node(current_node, passthrough_basis, unconnected_neighbors.len() > 0
+          );
           if u.is_some() {
-            invalid_surfaces.push(correlation_surface.clone());
-            syndromes.push(u.unwrap());
+            invalid_surfaces.push((cs.clone(), u.unwrap()));
             continue;
           }
-          let bd = boundary_nodes.clone();
-          let x = correlation_surface.signature_at_nodes(bd.into_iter(), pauli_value, 2);
-          if solve_linear_system(&mut vector_basis, x, false).unwrap().len() == 0 {
-            // TODO: replace cs.clone() with Rc::clone() invocations for better scalability.
+
+          let x = cs
+            .signature_at_nodes(boundary_nodes.clone().into_iter(), pauli_value, 2);
+
+          if solve_linear_system(&mut vector_basis, x, true).is_err() {
             if !p.is_none() && !b.is_none() {
-              valid_surfaces.push((correlation_surface.clone(), p.unwrap(), b.unwrap()));
+              valid_surfaces.push((cs.clone(), p.unwrap(), b.unwrap()));
             }
           }
         }
         // TODO: try to fix local constraint violations by XORing with other invalid surfaces
         let mut syndrome_basis: HashMap<usize, (usize, usize)> = HashMap::new();
         let mut basis_surfaces: Vec<HalfEdgeCorrelationSurface> = Vec::new();
-        for (cs, syndrome) in invalid_surfaces.iter().zip(syndromes.iter()) {
+        for (cs, syndrome) in invalid_surfaces {
+          todo!("Not yet fully implemented.");
           if vector_basis.len() == generating_set_sz {
             break;
           }
           // python: iterate over enumerate((syndrome ^ all_one, syndrome))
-          let _s = *syndrome;
-          for (j, target) in [!_s, _s].iter().enumerate() {
+          let all_one = (1 << connected_neighbors.len()) - 1;
+          for (j, target) in [syndrome ^ all_one, syndrome].iter().enumerate() {
             let indices = solve_linear_system(&mut syndrome_basis, *target, j != 0);
             if indices.is_ok() {
               let _indices = indices.unwrap();
               if _indices.len() == 0 {
                 if j == 1 {
-                  basis_surfaces.push(correlation_surface.clone());
+                  basis_surfaces.push(cs.clone());
                 }
                 continue;
               }
               let input: Vec<&HalfEdgeCorrelationSurface> = _indices
                   .iter()
                   .map(|k| basis_surfaces.get(*k as usize).unwrap())
-                  .chain(sole_cs.into_iter())
+                  .chain([&correlation_surface.clone()].into_iter())
                   .collect();
               let new_correlation_surface = HalfEdgeCorrelationSurface::xor(input);
               if solve_linear_system(&mut vector_basis, new_correlation_surface.signature_at_nodes(boundary_nodes.clone().into_iter(), pauli_value, 1), true).is_ok() {
                 let (u, b, _) = new_correlation_surface.validate_node(current_node, passthrough_basis, unconnected_neighbors.len() > 0);
-                valid_surfaces.push((new_correlation_surface, u.unwrap(), b.unwrap()));
+                valid_surfaces.push((new_correlation_surface.clone(), u.unwrap(), b.unwrap()));
                 break;
               }
             }
           }
         }
 
-        let edges_are_hadamard: Vec<bool> = unconnected_neighbors.iter().map(|n| Self::is_hadamard(graph, (current_node, *n))).collect();
-
-        correlation_surfaces = valid_surfaces.iter().map(|tup| expand_correlation_surface_to_node(
-          // TODO: arguments
+        let edges_are_hadamard: Vec<bool> = unconnected_neighbors
+          .iter()
+          .map(|n| Self::is_hadamard(graph, (current_node, *n)))
+          .collect();
+        // fixme: broadcast pauli has wrong assignment??
+        correlation_surfaces = valid_surfaces.iter().map(|tup|
+          expand_correlation_surface_to_node(
             tup.0.clone(),
             tup.1,
             tup.2,
@@ -309,18 +329,32 @@ impl PositionedZX {
             false
         ).into_iter()).flatten().collect();
 
-      
-        unconnected_neighbors.iter().filter(|n| !explored_nodes.contains(*n) && graph.degree(**n) > 1).for_each(|n| frontier.push(*n));
-        unexplored_neighbors.iter().filter(|n| graph.degree(**n) == 1).for_each(|n| explored_leaves.push(*n));
+        if correlation_surfaces.len() == 0 {
+          return correlation_surfaces;
+        }
+
+        correlation_surface = correlation_surfaces.remove(0);
+
+        unexplored_neighbors.iter()
+          .filter(|n| !explored_nodes.contains(*n) && graph.degree(**n) > 1)
+          .for_each(|n| frontier.push(*n));
+
+        unexplored_neighbors.iter()
+          .filter(|n| graph.degree(**n) == 1)
+          .for_each(|n| explored_leaves.push(*n));
+
         explored_nodes.insert(current_node);
 
-      }
     }
+    // FIXME: (9/1) something is going wrong when it comes to assigning I/Y values, that is
+    // the CS that should have Y values isn't getting all of them ...
     if correlation_surface.mapping.len() > 0 { // check if filled w/ meaningful value
       correlation_surfaces.push(correlation_surface);
     }
-    // FIXME: some of the correlation surfaces are getting lost here (compared w/ python vers)
-    // Need to fix the above loop assuming correct inputs.
+
+    println!("CSes pre reform = {:?}", correlation_surfaces);
+
+    // FIXME: *one* of the correlation surfaces is getting mixed up.
     return reform_correlation_surface_generators(
       correlation_surfaces,
       |cs| cs.signature_at_nodes(
@@ -353,7 +387,7 @@ pub fn vertex_type_to_pauli(vtype: VType, phase: Phase) -> Result<Pauli, &'stati
     (VType::X, phase) if phase == zero => Ok(Pauli::X),
     (VType::Z, phase) if phase == zero => Ok(Pauli::Z),
     (VType::Z, phase) if phase == half => Ok(Pauli::Y),
-    (VType::B, _) => Ok(Pauli::I), // QuiZX doesn't have identity
+    (VType::B, _) => Ok(Pauli::I),
     _ => Err("")
   }
 }
