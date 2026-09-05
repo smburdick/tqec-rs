@@ -14,7 +14,7 @@ fn main() {
       bg.find_correlation_surfaces()
         .into_iter()
         .for_each(|cs: correlation::CorrelationSurface| {
-          println!("{:?}", cs.to_string());
+          println!("{}", cs.external_stabilizer_on_graph(bg.clone()));
         });
     },
     Err(msg) => println!("{}", msg)

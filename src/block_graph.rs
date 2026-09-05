@@ -4,6 +4,7 @@ use petgraph::{Graph, Undirected, graph::{EdgeIndex, NodeIndex, UnGraph}};
 use crate::{correlation::CorrelationSurface, cube::{Cube, CubeKind, CubePosition, Pipe, ZXCube}};
 use crate::positioned::PositionedZX;
 
+#[derive(Clone, Debug)]
 pub struct BlockGraph {
     name: String,
     graph: Graph<Cube, Pipe, Undirected>,
@@ -147,11 +148,10 @@ impl BlockGraph {
         }
     }
 
-    pub fn leaves(&self) -> Vec<CubePosition> {
+    pub fn leaves(&self) -> impl Iterator<Item = CubePosition> {
         self.node_indices.keys()
             .cloned()
             .filter(|pos| self.degree(pos) == 1)
-            .collect()
     }
 
     pub fn to_zx_graph(&self) -> PositionedZX {

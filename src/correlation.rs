@@ -1,8 +1,8 @@
 use quizx::{graph::{GraphLike, V}, vec_graph::Graph};
 
-use crate::{cube::{Basis, CubePosition}, pauli::Pauli, positioned::PositionedZX, utils::{concat_ints_as_bits, solve_linear_system, zx_to_pauli}};
+use crate::{block_graph::BlockGraph, cube::{Basis, CubePosition}, pauli::Pauli, positioned::PositionedZX, utils::{concat_ints_as_bits, solve_linear_system, zx_to_pauli}};
 use core::fmt;
-use std::{collections::{HashMap, HashSet}, iter::{self, repeat}};
+use std::{collections::{HashMap, HashSet}, iter::{self, repeat}, mem::take};
 use itertools::Itertools;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, PartialOrd)]
@@ -31,9 +31,11 @@ pub struct ZXEdge {
 
 
 impl ZXEdge {
+
   pub fn new(u: ZXNode, v: ZXNode) -> Self {
     Self { u: u, v: v}
   }
+
   pub fn sorted(&self) -> Self {
     if self.u < self.v {
       *self
@@ -41,6 +43,11 @@ impl ZXEdge {
       ZXEdge::new(self.v, self.u)
     }
   }
+
+  pub fn is_self_loop(&self) -> bool {
+    return self.u.position == self.v.position;
+  }
+
 }
 
 impl fmt::Display for ZXEdge {
@@ -51,7 +58,7 @@ impl fmt::Display for ZXEdge {
 
 #[derive(Debug)]
 pub struct CorrelationSurface {
-  edges: HashSet<ZXEdge>
+  edges: HashSet<ZXEdge> // TODO: rename this to 'span'
 }
 
 impl CorrelationSurface {
@@ -62,6 +69,50 @@ impl CorrelationSurface {
 
   pub fn num_edges(&self) -> usize {
     self.edges.len()
+  }
+
+  pub fn is_single_node(&self) -> bool {
+    self.num_edges() == 1 
+  }
+
+  pub fn external_stabilizer_on_graph(&self, graph: BlockGraph) -> String {
+    let supports: Vec<CubePosition>;
+    if graph.is_open() {
+      todo!("");
+    } else {
+      supports = graph.leaves().collect();
+    }
+    self.external_stabilizer(supports)
+  }
+
+  pub fn external_stabilizer(&self, io_ports: Vec<CubePosition>) -> String {
+    let mut view: HashMap<CubePosition, HashSet<Basis>> = self.graph_view().1;
+    io_ports.iter()
+      .map(|port| {
+        let bases = view.entry(*port).or_default();
+        Pauli::from_basis_set(take(bases)).to_string()
+      })
+      .collect::<String>()
+  }
+
+  pub fn graph_view(&self) -> (HashMap<CubePosition, HashMap<CubePosition, Vec<ZXEdge>>>, HashMap<CubePosition, HashSet<Basis>>) {
+    let mut edges: HashMap<CubePosition, HashMap<CubePosition, Vec<ZXEdge>>> = HashMap::new();
+    let mut bases:  HashMap<CubePosition, HashSet<Basis>> = HashMap::new();
+    if self.is_single_node() {
+      let edge = self.edges.iter().next().expect("Single node CS missing edge");
+      let pos = edge.u.position;
+      edges.insert(pos, HashMap::from([(pos, vec![edge.clone()])]));
+      bases.insert(pos, HashSet::from([edge.u.basis]));
+    } else {
+      for edge in self.edges.iter() {
+        let (u, v) = (edge.u.position, edge.v.position);
+        edges.entry(u).or_default().entry(v).or_default().push(edge.clone());
+        edges.entry(v).or_default().entry(u).or_default().push(edge.clone());
+        bases.entry(u).or_default().insert(edge.u.basis);
+        bases.entry(v).or_default().insert(edge.v.basis);
+      }
+    }
+    (edges, bases)
   }
 
 }

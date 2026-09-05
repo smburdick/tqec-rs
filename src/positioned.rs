@@ -343,8 +343,7 @@ impl PositionedZX {
         explored_nodes.insert(current_node);
 
     }
-    // FIXME: (9/1) something is going wrong when it comes to assigning I/Y values, that is
-    // the CS that should have Y values isn't getting all of them ...
+
     if correlation_surface.mapping.len() > 0 { // check if filled w/ meaningful value
       correlation_surfaces.push(correlation_surface);
     }

@@ -1,4 +1,6 @@
-use crate::cube::Basis;
+use std::collections::HashSet;
+
+use crate::{cube::Basis, pauli::Pauli::Y};
 
 
 #[repr(usize)]
@@ -37,18 +39,35 @@ impl Pauli {
     }
   }
 
-  pub fn xor(self, other: Pauli) -> Self {
-    match (self as usize) ^ (other as usize) {
-      0b00 => Pauli::I,
-      0b01 => Pauli::X,
-      0b10 => Pauli::Z,
-      0b11 => Pauli::Y,
-      _ => unreachable!(),
+  pub fn to_string(&self) -> String {
+    match self {
+      Pauli::X => String::from("X"),
+      Pauli::Z => String::from("Z"),
+      Pauli::I => String::from("I"),
+      Pauli::Y => String::from("Y")
     }
+  }
+
+  pub fn xor(self, other: Pauli) -> Self {
+    Self::usize_to_pauli((self as usize) ^ (other as usize))
   }
 
   pub fn value(&self) -> usize {
     *self as usize
+  }
+
+  pub fn from_basis_set(bases: HashSet<Basis>) -> Self {
+    Self::usize_to_pauli((bases.contains(&Basis::X) as usize) | ((bases.contains(&Basis::Z) as usize) << 1))
+  }
+
+  fn usize_to_pauli(u: usize) -> Pauli {
+    match u {
+      0b00 => Pauli::I,
+      0b01 => Pauli::X,
+      0b10 => Pauli::Z,
+      0b11 => Pauli::Y,
+      _ => panic!("Invalid Pauli match: {}", u)
+    }
   }
 
 }
