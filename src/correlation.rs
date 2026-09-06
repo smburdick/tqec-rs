@@ -179,7 +179,6 @@ impl HalfEdgeCorrelationSurface {
         }
     }
 
-    // FIXME: this is returning incorrect results. :-/
     pub fn validate_node(
         &self,
         node: V,
@@ -286,10 +285,6 @@ impl HalfEdgeCorrelationSurface {
         result
     }
 
-    // pub fn product_of_disconnected_surfaces(cs_list: Vec<Vec<HalfEdgeCorrelationSurface>>) -> Vec<CorrelationSurfaceView> {
-    //   // Find Cartesian product of
-    // }
-
     pub fn to_immutable_public_representation(&self, graph: &PositionedZX) -> CorrelationSurface {
         if self.is_single_node() {
             let u_id = self.mapping.iter().next().unwrap().0;
@@ -306,8 +301,6 @@ impl HalfEdgeCorrelationSurface {
         let mut zx_nodes: HashMap<(usize, Basis), ZXNode> = HashMap::new();
         let bases = vec![Basis::X, Basis::Z];
         for (u, v, _) in graph.edges() {
-            // TODO: use alternatives to unwrap.
-            // FIXME: program crashes at this line.
             let pauli_u = *self
                 .mapping
                 .get(&u)
@@ -346,8 +339,7 @@ impl HalfEdgeCorrelationSurface {
     }
 }
 
-// FIXME: check this function ... seems like results have been different.
-pub fn generate_valid_local_paulis(
+pub fn generate_valid_local_paulis( // FIXME: this doesn't match Python?
     node_basis: Pauli,
     broadcast_pauli: Pauli,
     passthrough_parity: bool,
@@ -395,7 +387,7 @@ pub fn expand_correlation_surface_to_node(
 ) -> Vec<HalfEdgeCorrelationSurface> {
     // TODO: python version uses generator instead, consider using that.
     let mut new_correlation_surfaces: Vec<HalfEdgeCorrelationSurface> = Vec::new();
-    for (i, out_paulis) in generate_valid_local_paulis(
+    for out_paulis in generate_valid_local_paulis(
         node_basis,
         broadcast_pauli,
         passthrough_parity,
@@ -403,25 +395,14 @@ pub fn expand_correlation_surface_to_node(
         generate_all,
     )
     .iter()
-    .enumerate()
     {
-        // FIXME: this method doesn't really make a lot of sense, I am probably misunderstanding it
         let mut new_correlation_surface = correlation_surface.clone();
-        // if i != 0 || always_copy {
-        //   new_correlation_surface.mapping.insert(node, new_correlation_surface.mapping.get(&node).unwrap().clone());
-        // }
-        for (n, pauli, edge_is_hadamard) in unconnected_neighbors
+        for ((n, pauli), edge_is_hadamard) in unconnected_neighbors
             .iter()
             .zip(out_paulis.iter())
             .zip(edges_are_hadamard.iter())
-            .map(|((x, y), z)| (x, y, z))
         {
-            if (i > 0 || always_copy) && correlation_surface.mapping.contains_key(n) {
-                new_correlation_surface
-                    .mapping
-                    .insert(*n, correlation_surface.mapping.get(n).unwrap().clone());
-            }
-            new_correlation_surface.add_pauli_to_edge((node, *n), *pauli, *edge_is_hadamard);
+          new_correlation_surface.add_pauli_to_edge((node, *n), *pauli, *edge_is_hadamard);
         }
         new_correlation_surfaces.push(new_correlation_surface);
     }
@@ -510,7 +491,6 @@ pub fn find_correlation_surfaces_from_leaf(
                 leaves.values().sorted().map(|l| l.len() as usize),
             )
         };
-        // FIXME: basis surfaces being [] means they can't be referenced, need to check against the python version.
         correlation_surfaces = reform_correlation_surface_generators(
             correlation_surfaces.iter().collect(),
             sigfunc,

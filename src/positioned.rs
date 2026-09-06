@@ -271,7 +271,7 @@ impl PositionedZX {
 
             let connected_neighbors: Vec<V> = map
                 .get(&current_node)
-                .expect("Connected neighbors")
+                .expect(&format!("Connected neighbors at vertex {}", current_node))
                 .keys()
                 .map(|&a| a)
                 .collect::<Vec<V>>();
@@ -331,6 +331,9 @@ impl PositionedZX {
                 if solve_linear_system(&mut vector_basis, x, true).is_err() {
                     if !p.is_none() && !b.is_none() {
                         valid_surfaces.push((cs.clone(), p.unwrap(), b.unwrap()));
+                    }
+                    if vector_basis.len() == generating_set_sz {
+                      break;
                     }
                 }
             }
