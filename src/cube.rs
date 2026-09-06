@@ -14,7 +14,7 @@ impl FromStr for Basis {
         match s {
             "X" => Ok(Basis::X),
             "Z" => Ok(Basis::Z),
-            _ => Err("invalid basis"),
+            _ => Err("Invalid basis"),
         }
     }
 }
@@ -77,6 +77,10 @@ impl Cube {
   pub fn eq(&self, other: &Cube) -> bool {
     self.kind == other.kind && self.position == other.position
   }
+
+
+  
+
 }
 
 #[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
@@ -113,10 +117,10 @@ impl ZXCube {
   }
 }
 
-// TODO:
-// pub struct Port {
+#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
+pub struct PortCube {
 
-// }
+}
 
 // pub struct YHalfCube {
 
@@ -125,7 +129,7 @@ impl ZXCube {
 #[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
 pub enum CubeKind {
   ZX(ZXCube),
-  Port, // TODO: add implementations of port/yhalf
+  PortCube, // TODO: add implementations of port/yhalf
   YHalfCube
 }
 

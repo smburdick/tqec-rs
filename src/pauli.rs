@@ -60,6 +60,10 @@ impl Pauli {
     Self::usize_to_pauli((bases.contains(&Basis::X) as usize) | ((bases.contains(&Basis::Z) as usize) << 1))
   }
 
+  pub fn contains(&self, other: Pauli) -> bool {
+    (*self as usize) | (other as usize) == (*self as usize)
+  }
+
   fn usize_to_pauli(u: usize) -> Pauli {
     match u {
       0b00 => Pauli::I,

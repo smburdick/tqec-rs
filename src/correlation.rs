@@ -72,7 +72,7 @@ impl CorrelationSurface {
   }
 
   pub fn is_single_node(&self) -> bool {
-    self.num_edges() == 1 
+    self.num_edges() == 1 && self.edges.iter().next().unwrap().is_self_loop()
   }
 
   pub fn external_stabilizer_on_graph(&self, graph: BlockGraph) -> String {
@@ -96,8 +96,8 @@ impl CorrelationSurface {
   }
 
   pub fn graph_view(&self) -> (HashMap<CubePosition, HashMap<CubePosition, Vec<ZXEdge>>>, HashMap<CubePosition, HashSet<Basis>>) {
-    let mut edges: HashMap<CubePosition, HashMap<CubePosition, Vec<ZXEdge>>> = HashMap::new();
-    let mut bases:  HashMap<CubePosition, HashSet<Basis>> = HashMap::new();
+    let mut edges= HashMap::new();
+    let mut bases= HashMap::new();
     if self.is_single_node() {
       let edge = self.edges.iter().next().expect("Single node CS missing edge");
       let pos = edge.u.position;
@@ -150,6 +150,7 @@ impl HalfEdgeCorrelationSurface {
     }
   }
 
+  // FIXME: this is returning incorrect results. :-/
   pub fn validate_node(&self, node: V, basis: Pauli, has_unconnected_neighbors: bool) -> (Option<Pauli>, Option<bool>, Option<usize>) {
     let paulis: Vec<Pauli> = self.paulis_at_nodes(iter::once(node)).collect();
     if paulis.len() == 0 {
@@ -159,7 +160,10 @@ impl HalfEdgeCorrelationSurface {
     let passthru_parity = paulis.iter()
       .copied()
       .reduce(|acc, p| acc.xor(p))
-      .expect("Passthru parity") == basis;
+      .expect("Passthru parity")
+      .contains(basis);
+
+    // FIXME: ^ doesn't match the Python implementation, somehow.
 
     let mut valid = true;
     let broadcast_basis = basis.flipped(true);
@@ -270,6 +274,7 @@ impl HalfEdgeCorrelationSurface {
         .collect();
       for (xz_u, xz_v) in product {
         if (edge_is_hadamard ^ (xz_u == xz_v)) && xz_u == pauli_u && xz_v == pauli_v {
+
           let basis_u = bases[(xz_u.value() >> 1) as usize];
           let basis_v = bases[(xz_v.value() >> 1) as usize];
 
@@ -288,6 +293,7 @@ impl HalfEdgeCorrelationSurface {
 
 }
 
+// FIXME: check this function ... seems like results have been different.
 pub fn generate_valid_local_paulis(
   node_basis: Pauli,
   broadcast_pauli: Pauli,
@@ -302,7 +308,9 @@ pub fn generate_valid_local_paulis(
     let passthru_nodes = ((passthrough_parity as usize)..(unconnected_neighbors.len() + 1))
       .step_by(2)
       .flat_map(|n| unconnected_neighbors.clone().combinations(n));
+
     result = passthru_nodes.map(|p| unconnected_neighbors.clone().map(|n| if p.contains(&n) {combined_pauli} else {broadcast_pauli}).collect()).collect();
+  
   } else {
     todo!("Not implemented yet")
   }
@@ -310,13 +318,13 @@ pub fn generate_valid_local_paulis(
 }
 
 pub fn expand_correlation_surface_to_node(
-  correlation_surface: HalfEdgeCorrelationSurface,
+  correlation_surface: &HalfEdgeCorrelationSurface,
   broadcast_pauli: Pauli,
   passthrough_parity: bool,
   node: V,
   node_basis: Pauli,
-  unconnected_neighbors: Vec<V>,
-  edges_are_hadamard: Vec<bool>,
+  unconnected_neighbors: &Vec<V>,
+  edges_are_hadamard: &Vec<bool>,
   generate_all: bool,
   always_copy: bool
 ) -> Vec<HalfEdgeCorrelationSurface> { // TODO: python version uses generator instead, consider using that.
@@ -346,15 +354,14 @@ pub fn expand_correlation_surface_to_node(
     }
     new_correlation_surfaces.push(new_correlation_surface);
   }
-  // println!("{:?}", new_correlation_surfaces);
   new_correlation_surfaces
 }
 
 pub fn reform_correlation_surface_generators<F>(
-    correlation_surfaces: Vec<HalfEdgeCorrelationSurface>,
+    correlation_surfaces: Vec<&HalfEdgeCorrelationSurface>,
     signature_func: F,
     stabilizer_basis: &mut HashMap<usize, (usize, usize)>,
-    basis_surfaces: Vec<HalfEdgeCorrelationSurface>,
+    basis_surfaces: Vec<&HalfEdgeCorrelationSurface>,
     construct_new_surfaces: bool,// = True,
     num_new_surfaces_needed: usize, // | None = None,
     num_basis_surfaces_needed: usize //int | None = None,
@@ -365,22 +372,25 @@ pub fn reform_correlation_surface_generators<F>(
 where
     F: Fn(&HalfEdgeCorrelationSurface) -> usize,
 {
-  let mut new_basis_surfaces: Vec<HalfEdgeCorrelationSurface> = basis_surfaces.clone();
+  let mut new_basis_surfaces: Vec<HalfEdgeCorrelationSurface> = basis_surfaces.iter()
+    .map(|cs| (*cs).clone()).collect();
+
   let mut new_surfaces: Vec<HalfEdgeCorrelationSurface> = Vec::new();
   for cs in correlation_surfaces {
-    let x = signature_func(&cs);
+    let x = signature_func(cs);
     let indices = solve_linear_system(stabilizer_basis, x, true);
     if indices.is_err() {
-      new_basis_surfaces.push(cs);
+      new_basis_surfaces.push(cs.clone());
       if num_basis_surfaces_needed > 0 && basis_surfaces.len() > num_basis_surfaces_needed {
         break;
       }
       continue;
     }
     if construct_new_surfaces {
-      // TODO:
-      let _vec = vec![cs];
-      let _bscs = basis_surfaces.iter().chain(_vec.iter()).collect();
+      let _bscs = indices.unwrap().iter()
+        .map(|k| &new_basis_surfaces[*k])
+        .chain(std::iter::once(cs))
+        .collect();
       let _new_cs = HalfEdgeCorrelationSurface::xor(_bscs);
       new_surfaces.push(_new_cs);
       if num_new_surfaces_needed > 0 && new_surfaces.len() >= num_new_surfaces_needed {
@@ -419,8 +429,9 @@ pub fn find_correlation_surfaces_from_leaf(zx_graph: &Graph, leaf: V) -> Vec<Hal
         }),
     leaves.values().sorted().map(|l| l.len() as usize),
     );
+    // FIXME: basis surfaces being [] means they can't be referenced, need to check against the python version.
     correlation_surfaces = reform_correlation_surface_generators(
-      correlation_surfaces,
+      correlation_surfaces.iter().collect(),
       sigfunc,
       &mut HashMap::new(),
       Vec::new(),

@@ -43,7 +43,12 @@ pub fn solve_linear_system(basis: &mut HashMap<usize, (usize, usize)>, x: usize,
     _x ^= *pivot;
     mask ^= *pivot_mask;
   }
-  Ok(int_to_bit_indices(mask).into_iter().rev().collect())
+  let mut indices = int_to_bit_indices(mask);
+  // Lop off final element
+  if indices.len() > 0 {
+    indices = indices[..(indices.len() - 1)].to_vec();
+  }
+  Ok(indices)
 }
 
 pub fn int_to_bit_indices(x: usize) -> Vec<usize> {

@@ -64,7 +64,7 @@ impl PositionedZX {
             (VType::X, phase)
           }
         },
-        CubeKind::Port => (VType::B, phase),
+        CubeKind::PortCube => (VType::B, phase),
         CubeKind::YHalfCube => (VType::Z, Phase::from_f64(0.5))
     }
   }
@@ -109,9 +109,7 @@ impl PositionedZX {
       if leaves.len() == 0 {
         return Err("The graph must contain at least one leaf node to find correlation surfaces.");
       }
-      // We don't support vertex ordering yet!
-      // FIXME: somewhere, where the connected components are being made,
-      // Vertices seem to be changing pauli type
+
       let components: Vec<(Graph, V)> = self.as_connected_components()
         .iter()
         .map(|component: &Graph| (component.clone(), component.vertices().filter(|v| component.degree(*v) == 1).min().unwrap()))
@@ -212,7 +210,7 @@ impl PositionedZX {
     let pauli_value = |p: Pauli| p.value(); // used in sub functions.
     while frontier.len() > 0 {
         let current_node = frontier.remove(0);
-        let map = correlation_surface.mapping.clone();
+        let map = &correlation_surface.mapping;
 
         let connected_neighbors: Vec<V> = map.get(&current_node)
           .expect("Connected neighbors")
@@ -252,10 +250,11 @@ impl PositionedZX {
 
         let mut valid_surfaces: Vec<(HalfEdgeCorrelationSurface, Pauli, bool)> = Vec::new();
         let mut invalid_surfaces: Vec<(HalfEdgeCorrelationSurface, usize)> = Vec::new();
+
         let mut vector_basis: HashMap<usize, (usize, usize)> = HashMap::new();
 
-        for cs in ([correlation_surface].into_iter()).chain(correlation_surfaces) {
-
+        for cs in (std::iter::once(&correlation_surface)).chain(correlation_surfaces.iter()) {
+          // Bingo? These two are different ...
           let (p, b, u) = cs
               .validate_node(current_node, passthrough_basis, unconnected_neighbors.len() > 0
           );
@@ -276,8 +275,9 @@ impl PositionedZX {
         // TODO: try to fix local constraint violations by XORing with other invalid surfaces
         let mut syndrome_basis: HashMap<usize, (usize, usize)> = HashMap::new();
         let mut basis_surfaces: Vec<HalfEdgeCorrelationSurface> = Vec::new();
+
         for (cs, syndrome) in invalid_surfaces {
-          todo!("Not yet fully implemented.");
+
           if vector_basis.len() == generating_set_sz {
             break;
           }
@@ -293,15 +293,18 @@ impl PositionedZX {
                 }
                 continue;
               }
+
               let input: Vec<&HalfEdgeCorrelationSurface> = _indices
                   .iter()
                   .map(|k| basis_surfaces.get(*k as usize).unwrap())
-                  .chain([&correlation_surface.clone()].into_iter())
+                  .chain(std::iter::once(&correlation_surface))
                   .collect();
+
               let new_correlation_surface = HalfEdgeCorrelationSurface::xor(input);
+
               if solve_linear_system(&mut vector_basis, new_correlation_surface.signature_at_nodes(boundary_nodes.clone().into_iter(), pauli_value, 1), true).is_ok() {
                 let (u, b, _) = new_correlation_surface.validate_node(current_node, passthrough_basis, unconnected_neighbors.len() > 0);
-                valid_surfaces.push((new_correlation_surface.clone(), u.unwrap(), b.unwrap()));
+                valid_surfaces.push((new_correlation_surface, u.unwrap(), b.unwrap()));
                 break;
               }
             }
@@ -312,19 +315,19 @@ impl PositionedZX {
           .iter()
           .map(|n| Self::is_hadamard(graph, (current_node, *n)))
           .collect();
-        // fixme: broadcast pauli has wrong assignment??
+
         correlation_surfaces = valid_surfaces.iter().map(|tup|
           expand_correlation_surface_to_node(
-            tup.0.clone(),
+            &tup.0,
             tup.1,
             tup.2,
             current_node,
             passthrough_basis,
-            unconnected_neighbors.clone(),
-            edges_are_hadamard.clone(),
+            &unconnected_neighbors,
+            &edges_are_hadamard,
             true,
             false
-        ).into_iter()).flatten().collect();
+        )).flatten().collect();
 
         if correlation_surfaces.len() == 0 {
           return correlation_surfaces;
@@ -349,7 +352,7 @@ impl PositionedZX {
     }
 
     return reform_correlation_surface_generators(
-      correlation_surfaces,
+      correlation_surfaces.iter().collect(),
       |cs| cs.signature_at_nodes(
         graph.vertices().filter(|v| graph.degree(*v) == 1), pauli_value, 2
       ),

@@ -10,7 +10,6 @@ pub struct BlockGraph {
     graph: Graph<Cube, Pipe, Undirected>,
     node_indices: HashMap<CubePosition, NodeIndex>, // Used for client lookups
     edge_indices: HashMap<Pipe, EdgeIndex>,
-    // cube_data: HashMap<CubePosition, Cube>,
     ports: HashMap<String, CubePosition> // TODO: how to add ports?
 }
 
@@ -20,7 +19,6 @@ impl BlockGraph {
         Self {
             name: name,
             graph: UnGraph::default(),
-            // cube_data: HashMap::new(),
             node_indices: HashMap::new(),
             edge_indices: HashMap::new(),
             ports: HashMap::new()
@@ -38,7 +36,7 @@ impl BlockGraph {
                 let mut parse_cubes = false;
                 let mut parse_pipes = false;
                 let mut cubeIdToNodeIndex: HashMap<String, NodeIndex> = HashMap::new();
-                for (index, line) in reader.lines().enumerate() {
+                for (_, line) in reader.lines().enumerate() {
                     // TODO: skip header and metadata
                     let _line = line.expect("Missing line");
                     if _line.len() == 1 || _line.is_empty() {
@@ -54,36 +52,46 @@ impl BlockGraph {
                     }
                     if parse_cubes {
                         let items: Vec<&str> = _line.split(";").collect();
-                        // if items.len() != 6 {
-                        //     Err(String::from("Incorrect cube spec"))
-                        // }
+
                         let cube_id: &str = items[0];
-                        // TODO: when cube is added to the graph, map its cube
-                        // id to its NodeIndex, then use that to link up the pipes
                         let x_coord: i32 = items[1].parse().expect("X coordinate");
-                        let y_coord: i32 = items[2].parse().expect("Ycoordinate.");
+                        let y_coord: i32 = items[2].parse().expect("Y coordinate");
                         let z_coord: i32 = items[3].parse().expect("Z coordinate");
                         let kind: String = items[4].to_uppercase();
-                        // FIXME: need to generate the correct kind of cube here.
-                        // ZXCube, YHalfCube, Port
-                        let zx_cube_kind = CubeKind::ZX(ZXCube::from_str(&kind)?);
+
+                        let cube_kind: CubeKind;
+                        if kind == "OOO" || kind == "P" || kind == "PORT" {
+                            cube_kind = CubeKind::PortCube;
+                        } else if kind.contains("Y") {
+                            cube_kind = CubeKind::YHalfCube;
+                        } else {
+                            cube_kind = CubeKind::ZX(ZXCube::from_str(&kind)?);
+                        }
+
                         let pos: CubePosition = CubePosition::new(x_coord, y_coord, z_coord);
                         let annotation: &str = items[5]; // TODO: how is this used?
-                        let cube: Cube = Cube::new(zx_cube_kind, pos);
+                        let cube: Cube = Cube::new(cube_kind, pos);
                         let idx = to_return.graph.add_node(cube);
                         to_return.node_indices.insert(pos, idx);
-                        // to_return.cube_data.insert(pos, zx_cube);
                         cubeIdToNodeIndex.insert(cube_id.to_string(), idx);
+
                     } else if parse_pipes {
+
                         let items: Vec<&str> = _line.split(";").collect();
                         let cube1_id: &str = items[0];
                         let cube2_id: &str = items[1];
-                        let kind = items[2];
+                        let kind = &items[2].to_uppercase(); // FIXME: ozx is an invalid kind.
                         let cube1_idx = cubeIdToNodeIndex.get(cube1_id).unwrap();
                         let cube2_idx = cubeIdToNodeIndex.get(cube2_id).unwrap();
+
+                        if to_return.graph.contains_edge(*cube1_idx, *cube2_idx) {
+                            // TODO: error
+                        }
+
                         let weight: Pipe = Pipe::from_str(kind)?;
                         let eidx = to_return.graph.add_edge(*cube1_idx, *cube2_idx, weight);
                         to_return.edge_indices.insert(weight, eidx);
+
                     }
                 }
                 Ok(to_return)
@@ -150,8 +158,8 @@ impl BlockGraph {
 
     pub fn leaves(&self) -> impl Iterator<Item = CubePosition> {
         self.node_indices.keys()
-            .cloned()
             .filter(|pos| self.degree(pos) == 1)
+            .cloned()
     }
 
     pub fn to_zx_graph(&self) -> PositionedZX {
