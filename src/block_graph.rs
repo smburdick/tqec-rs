@@ -1,8 +1,20 @@
-use std::{collections::HashMap, fs::File, io::{BufRead, BufReader}, path::Path, str::FromStr};
-use petgraph::{Graph, Undirected, graph::{EdgeIndex, NodeIndex, UnGraph}};
+use petgraph::{
+    Graph, Undirected,
+    graph::{EdgeIndex, NodeIndex, UnGraph},
+};
+use std::{
+    collections::HashMap,
+    fs::File,
+    io::{BufRead, BufReader},
+    path::Path,
+    str::FromStr,
+};
 
-use crate::{correlation::CorrelationSurface, cube::{Cube, CubeKind, CubePosition, Pipe, ZXCube}};
 use crate::positioned::PositionedZX;
+use crate::{
+    correlation::CorrelationSurface,
+    cube::{Cube, CubeKind, CubePosition, Pipe, ZXCube},
+};
 
 #[derive(Clone, Debug)]
 pub struct BlockGraph {
@@ -10,18 +22,17 @@ pub struct BlockGraph {
     graph: Graph<Cube, Pipe, Undirected>,
     node_indices: HashMap<CubePosition, NodeIndex>, // Used for client lookups
     edge_indices: HashMap<Pipe, EdgeIndex>,
-    ports: HashMap<String, CubePosition> // TODO: how to add ports?
+    ports: HashMap<String, CubePosition>, // TODO: how to add ports?
 }
 
 impl BlockGraph {
-
     pub fn new(name: String) -> Self {
         Self {
             name: name,
             graph: UnGraph::default(),
             node_indices: HashMap::new(),
             edge_indices: HashMap::new(),
-            ports: HashMap::new()
+            ports: HashMap::new(),
         }
     }
 
@@ -74,9 +85,7 @@ impl BlockGraph {
                         let idx = to_return.graph.add_node(cube);
                         to_return.node_indices.insert(pos, idx);
                         cubeIdToNodeIndex.insert(cube_id.to_string(), idx);
-
                     } else if parse_pipes {
-
                         let items: Vec<&str> = _line.split(";").collect();
                         let cube1_id: &str = items[0];
                         let cube2_id: &str = items[1];
@@ -91,12 +100,14 @@ impl BlockGraph {
                         let weight: Pipe = Pipe::from_str(kind)?;
                         let eidx = to_return.graph.add_edge(*cube1_idx, *cube2_idx, weight);
                         to_return.edge_indices.insert(weight, eidx);
-
                     }
                 }
                 Ok(to_return)
-            },
-            Err(e) => { println!("Invalid file path"); Err(e.to_string()) },
+            }
+            Err(e) => {
+                println!("Invalid file path");
+                Err(e.to_string())
+            }
         }
     }
 
@@ -121,14 +132,20 @@ impl BlockGraph {
     }
 
     pub fn spanning_cubes_of(&self, pipe: &Pipe) -> (&Cube, &Cube) {
-        let (idx1, idx2) = self.graph.edge_endpoints(*self.edge_indices.get(pipe).unwrap()).unwrap();
+        let (idx1, idx2) = self
+            .graph
+            .edge_endpoints(*self.edge_indices.get(pipe).unwrap())
+            .unwrap();
         let cube1 = self.graph.node_weight(idx1).unwrap();
         let cube2 = self.graph.node_weight(idx2).unwrap();
         (cube1, cube2)
     }
 
     pub fn num_y_half_cubes(&self) -> usize {
-        self.node_indices.values().filter(|idx| self.graph.node_weight(**idx).unwrap().kind() == CubeKind::YHalfCube).count()
+        self.node_indices
+            .values()
+            .filter(|idx| self.graph.node_weight(**idx).unwrap().kind() == CubeKind::YHalfCube)
+            .count()
     }
 
     pub fn set_name(&mut self, new_name: String) {
@@ -144,20 +161,20 @@ impl BlockGraph {
     }
 
     pub fn spacetime_volume(&self) -> f64 {
-        ((self.num_cubes() - self.num_ports() - self.num_y_half_cubes()) as f64)
-            / 2.0
+        ((self.num_cubes() - self.num_ports() - self.num_y_half_cubes()) as f64) / 2.0
     }
 
     pub fn degree(&self, cube_pos: &CubePosition) -> usize {
         let idx: Option<&NodeIndex> = self.node_indices.get(cube_pos);
         match idx {
             Some(val) => self.graph.neighbors(*val).count(),
-            None => 0
+            None => 0,
         }
     }
 
     pub fn leaves(&self) -> impl Iterator<Item = CubePosition> {
-        self.node_indices.keys()
+        self.node_indices
+            .keys()
             .filter(|pos| self.degree(pos) == 1)
             .cloned()
     }
@@ -169,7 +186,4 @@ impl BlockGraph {
     pub fn find_correlation_surfaces(&self) -> Vec<CorrelationSurface> {
         self.to_zx_graph().find_correlation_surfaces().unwrap()
     }
-
 }
-
-
