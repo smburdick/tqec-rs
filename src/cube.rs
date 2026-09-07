@@ -1,5 +1,7 @@
 use rand::random;
-use std::{fmt, str::FromStr};
+use std::{fmt, iter::once, str::FromStr};
+
+use crate::direction::Direction3D;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd)]
 pub enum Basis {
@@ -26,6 +28,12 @@ impl Basis {
             Basis::Z => Basis::X,
         }
     }
+    pub fn to_string(&self) -> String {
+        match self {
+            Basis::X => String::from("X"),
+            Basis::Z => String::from("Z"),
+        }
+    }
 }
 
 impl fmt::Display for Basis {
@@ -45,6 +53,15 @@ impl CubePosition {
     pub fn new(x: i32, y: i32, z: i32) -> CubePosition {
         Self { x: x, y: y, z: z }
     }
+    pub fn x(&self) -> i32 {
+        self.x
+    }
+    pub fn y(&self) -> i32 {
+        self.y
+    }
+    pub fn z(&self) -> i32 {
+        self.z
+    }
 }
 
 impl fmt::Display for CubePosition {
@@ -53,7 +70,7 @@ impl fmt::Display for CubePosition {
     }
 }
 
-#[derive(Hash, Debug, Clone, Eq, PartialEq)]
+#[derive(Hash, Debug, Copy, Clone, Eq, PartialEq)]
 pub struct Cube {
     kind: CubeKind,
     position: CubePosition,
@@ -66,14 +83,24 @@ impl Cube {
             position: position,
         }
     }
+
     pub fn kind(&self) -> CubeKind {
         self.kind
     }
+
     pub fn position(&self) -> CubePosition {
         self.position
     }
+
     pub fn eq(&self, other: &Cube) -> bool {
         self.kind == other.kind && self.position == other.position
+    }
+
+    pub fn is_spatial(&self) -> bool {
+        match self.kind {
+            CubeKind::ZX(zx_cube) => zx_cube.is_spatial(),
+            _ => false,
+        }
     }
 }
 
@@ -90,9 +117,11 @@ impl ZXCube {
     pub fn as_tuple(&self) -> (Basis, Basis, Basis) {
         (self.x, self.y, self.z)
     }
+
     pub fn is_spatial(&self) -> bool {
         self.x == self.y
     }
+
     pub fn from_str(rep: &str) -> Result<Self, String> {
         if ALLOWED_CUBES.contains(&rep) {
             let mut chars = rep.chars();
@@ -108,6 +137,7 @@ impl ZXCube {
             ))
         }
     }
+
     pub fn num_z_boundaries(&self) -> usize {
         vec![self.x, self.y, self.z]
             .iter()
@@ -130,26 +160,9 @@ pub enum CubeKind {
     YHalfCube,
 }
 
-// impl Cube {
-//   pub fn new(kind: CubeKind, label: String) -> Cube {
-//     Self {
-//       kind, label
-//     }
-//   }
-//   pub fn is_zx_cube(&self) -> bool {
-//     matches!(self.kind, CubeKind::ZXCube)
-//   }
-//   pub fn is_port(&self) -> bool {
-//     matches!(self.kind, CubeKind::Port)
-//   }
-//   pub fn is_y_half_cube(&self) -> bool {
-//     matches!(self.kind, CubeKind::YHalfCube)
-//   }
-// }
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Pipe {
-    id: u64, // Ensure uniqueness of pipes in graph.
+    id: u64, // Ensure uniqueness of pipes in graph. TODO: find a better way to do this.
     x: Option<Basis>,
     y: Option<Basis>,
     z: Option<Basis>,
@@ -185,7 +198,27 @@ impl FromStr for Pipe {
 }
 
 impl Pipe {
+    pub fn to_string(&self) -> String {
+        [self.x, self.y, self.z]
+            .iter()
+            .map(|basis| {
+                if basis.is_some() {
+                    basis.expect("msg").to_string()
+                } else {
+                    String::from("0")
+                }
+            })
+            .chain(once(String::from(if self.has_hadamard { "H" } else { "" })))
+            .collect::<String>()
+    }
     pub fn has_hadamard(&self) -> bool {
         self.has_hadamard
+    }
+    pub fn direction(&self) -> Option<Direction3D> {
+        Direction3D::from_int(
+            self.to_string()
+                .find("0")
+                .expect("Pipe has invalid direction"),
+        )
     }
 }

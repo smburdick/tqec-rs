@@ -317,7 +317,10 @@ impl HalfEdgeCorrelationSurface {
                 .flat_map(|&x| _vec.iter().map(move |&y| (x, y)))
                 .collect();
             for (xz_u, xz_v) in product {
-                if (edge_is_hadamard ^ (xz_u == xz_v)) && pauli_u.contains(xz_u) && pauli_v.contains(xz_v) {
+                if (edge_is_hadamard ^ (xz_u == xz_v))
+                    && pauli_u.contains(xz_u)
+                    && pauli_v.contains(xz_v)
+                {
                     let basis_u = bases[(xz_u.value() >> 1) as usize];
                     let basis_v = bases[(xz_v.value() >> 1) as usize];
 
