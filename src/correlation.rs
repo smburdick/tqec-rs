@@ -8,7 +8,7 @@ use crate::{
     cube::{Basis, CubePosition},
     pauli::Pauli,
     positioned::PositionedZX,
-    utils::{concat_ints_as_bits, solve_linear_system, zx_to_pauli},
+    utils::{concat_ints_as_bits, int_to_bit_indices, solve_linear_system, zx_to_pauli},
 };
 use core::fmt;
 use itertools::Itertools;
@@ -295,7 +295,7 @@ impl HalfEdgeCorrelationSurface {
             let edge: ZXEdge = ZXEdge::new(node, node);
             let mut set: HashSet<ZXEdge> = HashSet::new();
             set.insert(edge);
-            CorrelationSurface::new(set);
+            return CorrelationSurface::new(set);
         }
         let mut span: Vec<ZXEdge> = Vec::new();
         let mut zx_nodes: HashMap<(usize, Basis), ZXNode> = HashMap::new();
@@ -311,13 +311,13 @@ impl HalfEdgeCorrelationSurface {
             let edge_is_hadamard = graph.edge_is_hadamard((u, v));
             let pos_u = graph.get_cube_at(u).unwrap().position();
             let pos_v = graph.get_cube_at(v).unwrap().position();
-            let _vec = Pauli::vec_ixyz();
+            let _vec = [Pauli::X, Pauli::Z];
             let product: Vec<(Pauli, Pauli)> = _vec
                 .iter()
                 .flat_map(|&x| _vec.iter().map(move |&y| (x, y)))
                 .collect();
             for (xz_u, xz_v) in product {
-                if (edge_is_hadamard ^ (xz_u == xz_v)) && xz_u == pauli_u && xz_v == pauli_v {
+                if (edge_is_hadamard ^ (xz_u == xz_v)) && pauli_u.contains(xz_u) && pauli_v.contains(xz_v) {
                     let basis_u = bases[(xz_u.value() >> 1) as usize];
                     let basis_v = bases[(xz_v.value() >> 1) as usize];
 
@@ -339,7 +339,8 @@ impl HalfEdgeCorrelationSurface {
     }
 }
 
-pub fn generate_valid_local_paulis( // FIXME: this doesn't match Python?
+pub fn generate_valid_local_paulis(
+    // FIXME: this doesn't match Python?
     node_basis: Pauli,
     broadcast_pauli: Pauli,
     passthrough_parity: bool,
@@ -402,7 +403,7 @@ pub fn expand_correlation_surface_to_node(
             .zip(out_paulis.iter())
             .zip(edges_are_hadamard.iter())
         {
-          new_correlation_surface.add_pauli_to_edge((node, *n), *pauli, *edge_is_hadamard);
+            new_correlation_surface.add_pauli_to_edge((node, *n), *pauli, *edge_is_hadamard);
         }
         new_correlation_surfaces.push(new_correlation_surface);
     }
@@ -461,34 +462,36 @@ pub fn find_correlation_surfaces_from_leaf(
 ) -> Vec<HalfEdgeCorrelationSurface> {
     let mut correlation_surfaces =
         PositionedZX::find_correlation_surface_generating_set_from_leaf(zx_graph, leaf);
-    println!("CSes = {:#?}", correlation_surfaces);
+
     let mut leaves: HashMap<Pauli, Vec<V>> = HashMap::new();
     for p in Pauli::vec_ixyz() {
         leaves.insert(p, Vec::new());
     }
+
     let vertices: Vec<V> = zx_graph
         .vertices()
         .filter(|v| zx_graph.degree(*v) == 1)
         .collect();
+
     for v in vertices.iter().sorted() {
-        let mut key: Pauli = zx_to_pauli(zx_graph, *v).flipped(true);
+        let key: Pauli = zx_to_pauli(zx_graph, *v).flipped(true);
         leaves.get_mut(&key).unwrap().push(*v);
     }
 
-    let open_leaves: bool = leaves.get(&Pauli::I).unwrap().len() > 0;
+    let open_leaves = leaves.get(&Pauli::I).expect("msg").clone();
     leaves.remove_entry(&Pauli::I);
 
     if leaves.values().map(|m| m.len()).sum::<usize>() > 0 {
         let sigfunc = |cs: &HalfEdgeCorrelationSurface| {
             concat_ints_as_bits(
-                leaves.clone().iter().map(|(pauli, _leaves)| {
+                leaves.iter().map(|(pauli, _leaves)| {
                     cs.signature_at_nodes(
-                        _leaves.iter().sorted().map(|l| *l),
+                        _leaves.iter().map(|v| *v),
                         |p: Pauli| (p != *pauli && p != Pauli::I) as usize,
                         1,
                     )
                 }),
-                leaves.values().sorted().map(|l| l.len() as usize),
+                leaves.values().map(|l| l.len() as usize),
             )
         };
         correlation_surfaces = reform_correlation_surface_generators(
@@ -503,10 +506,70 @@ pub fn find_correlation_surfaces_from_leaf(
         .1
     }
 
-    if open_leaves {
-        todo!("")
+    if !open_leaves.is_empty() {
+        let mut basis: HashMap<usize, (usize, usize)> = HashMap::new();
+        construct_basis(
+            &mut basis,
+            &correlation_surfaces,
+            |cs: &HalfEdgeCorrelationSurface| {
+                cs.signature_at_nodes(open_leaves.iter().map(|l| *l), |p: Pauli| p.value(), 2)
+            },
+        );
+        normalize_basis(&mut basis, true);
+        correlation_surfaces = basis
+            .values()
+            .map(|(_, mask)| {
+                let indices = int_to_bit_indices(*mask);
+                if indices.len() > 1 {
+                    HalfEdgeCorrelationSurface::xor(
+                        indices
+                            .iter()
+                            .map(|i| correlation_surfaces.get(*i).expect("msg"))
+                            .collect(),
+                    )
+                } else {
+                    correlation_surfaces
+                        .get(*indices.get(0).expect("msg"))
+                        .expect("msg")
+                        .clone()
+                }
+            })
+            .collect();
     }
+
     correlation_surfaces
+}
+
+pub fn construct_basis<F>(
+    basis: &mut HashMap<usize, (usize, usize)>,
+    correlation_surfaces: &Vec<HalfEdgeCorrelationSurface>,
+    func: F,
+) where
+    F: Fn(&HalfEdgeCorrelationSurface) -> usize,
+{
+    correlation_surfaces.iter().for_each(|cs| {
+        solve_linear_system(basis, func(cs), true);
+    });
+}
+
+pub fn normalize_basis(basis: &mut HashMap<usize, (usize, usize)>, in_place: bool) {
+    if !in_place {
+        todo!("Not implemented yet.")
+    }
+    let highest_bits: Vec<usize> = basis.keys().sorted().rev().map(|u| *u).collect();
+    for (i, key) in highest_bits.iter().enumerate() {
+        let (_v, _m) = basis.get(key).expect("msg");
+        let mut vector = *_v;
+        let mut mask = *_m;
+        for highest_bit in &highest_bits[i + 1..] {
+            if (vector >> highest_bit) & 1 != 0 {
+                let (pivot, pivot_mask) = basis.get(highest_bit).expect("msg");
+                vector ^= *pivot;
+                mask ^= *pivot_mask;
+            }
+        }
+        basis.insert(*key, (vector, mask));
+    }
 }
 
 // pub struct Basis {

@@ -29,8 +29,7 @@ impl Pauli {
             match self {
                 Pauli::X => Pauli::Z,
                 Pauli::Z => Pauli::X,
-                Pauli::Y => Pauli::I,
-                Pauli::I => Pauli::Y,
+                _ => *self,
             }
         } else {
             return self.clone();

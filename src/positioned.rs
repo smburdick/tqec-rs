@@ -333,7 +333,7 @@ impl PositionedZX {
                         valid_surfaces.push((cs.clone(), p.unwrap(), b.unwrap()));
                     }
                     if vector_basis.len() == generating_set_sz {
-                      break;
+                        break;
                     }
                 }
             }
