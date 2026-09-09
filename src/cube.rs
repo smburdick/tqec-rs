@@ -1,8 +1,6 @@
 use rand::random;
 use std::{fmt, iter::once, str::FromStr};
 
-use crate::direction::Direction3D;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd)]
 pub enum Basis {
     X,
@@ -42,15 +40,15 @@ impl fmt::Display for Basis {
     }
 }
 
-#[derive(PartialEq, Eq, Hash, Debug, Copy, Clone, PartialOrd)]
-pub struct CubePosition {
+#[derive(PartialEq, Eq, Hash, Debug, Copy, Clone, Ord, PartialOrd)]
+pub struct Position3D {
     x: i32,
     y: i32,
     z: i32,
 }
 
-impl CubePosition {
-    pub fn new(x: i32, y: i32, z: i32) -> CubePosition {
+impl Position3D {
+    pub fn new(x: i32, y: i32, z: i32) -> Position3D {
         Self { x: x, y: y, z: z }
     }
     pub fn x(&self) -> i32 {
@@ -62,9 +60,16 @@ impl CubePosition {
     pub fn z(&self) -> i32 {
         self.z
     }
+    pub fn shift_by(&self, dx: i32, dy: i32, dz: i32) -> Self {
+        Self {
+            x: self.x + dx,
+            y: self.y + dy,
+            z: self.z + dz,
+        }
+    }
 }
 
-impl fmt::Display for CubePosition {
+impl fmt::Display for Position3D {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "({}, {}, {})", self.x, self.y, self.z)
     }
@@ -73,11 +78,11 @@ impl fmt::Display for CubePosition {
 #[derive(Hash, Debug, Copy, Clone, Eq, PartialEq)]
 pub struct Cube {
     kind: CubeKind,
-    position: CubePosition,
+    position: Position3D,
 }
 
 impl Cube {
-    pub fn new(kind: CubeKind, position: CubePosition) -> Cube {
+    pub fn new(kind: CubeKind, position: Position3D) -> Cube {
         Self {
             kind: kind,
             position: position,
@@ -88,7 +93,7 @@ impl Cube {
         self.kind
     }
 
-    pub fn position(&self) -> CubePosition {
+    pub fn position(&self) -> Position3D {
         self.position
     }
 
@@ -143,6 +148,17 @@ impl ZXCube {
             .iter()
             .filter(|b| **b == Basis::Z)
             .count()
+    }
+
+    pub fn normal_basis(&self) -> Basis {
+        match [self.x, self.y, self.z]
+            .iter()
+            .filter(|b| **b == Basis::Z)
+            .count()
+        {
+            1 => Basis::Z,
+            _ => Basis::X,
+        }
     }
 }
 
@@ -220,5 +236,24 @@ impl Pipe {
                 .find("0")
                 .expect("Pipe has invalid direction"),
         )
+    }
+}
+
+#[repr(usize)]
+#[derive(PartialEq)]
+pub enum Direction3D {
+    X = 0,
+    Y = 1,
+    Z = 2,
+}
+
+impl Direction3D {
+    pub fn from_int(idx: usize) -> Option<Self> {
+        match idx {
+            0 => Some(Self::X),
+            1 => Some(Self::Y),
+            2 => Some(Self::Z),
+            _ => None,
+        }
     }
 }

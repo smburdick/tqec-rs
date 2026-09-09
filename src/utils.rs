@@ -68,6 +68,7 @@ fn usize_bit_len(x: usize) -> usize {
     (usize::BITS - x.leading_zeros()) as usize
 }
 
+// TODO: move this into PositionedZX if possible
 pub fn zx_to_pauli(g: &Graph, v: V) -> Pauli {
     let (vt, phase) = (g.vertex_type(v), g.phase(v));
     let res = vertex_type_to_pauli(vt, phase);

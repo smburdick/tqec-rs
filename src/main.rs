@@ -4,7 +4,6 @@ mod abstract_observable;
 mod block_graph;
 mod correlation;
 mod cube;
-mod direction;
 mod pauli;
 mod positioned;
 mod utils;

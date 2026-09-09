@@ -1,8 +1,4 @@
-use std::{
-    cell::RefCell,
-    collections::{HashMap, HashSet},
-    rc::Rc,
-};
+use std::collections::{HashMap, HashSet};
 
 use itertools::Itertools;
 use quizx::{
@@ -14,26 +10,19 @@ use quizx::{
 use crate::{
     block_graph::BlockGraph,
     correlation::{
-        self, CorrelationSurface, HalfEdgeCorrelationSurface, ZXEdge, ZXNode,
+        CorrelationSurface, HalfEdgeCorrelationSurface, ZXEdge, ZXNode,
         expand_correlation_surface_to_node, find_correlation_surfaces_from_leaf,
         reform_correlation_surface_generators,
     },
-    cube::{Cube, CubeKind},
+    cube::{Basis, Cube, CubeKind, Position3D},
     pauli::Pauli,
-    utils::solve_linear_system,
+    utils::{solve_linear_system, zx_to_pauli},
 }; // TODO: decide which kind of graph to use (vec or hash)
 
 pub struct PositionedZX {
     /// Conversion of BlockGraph into PyZX structures
     graph: Graph,
     positions: HashMap<V, Cube>, // V is alias of usize
-}
-
-struct CSID(usize);
-struct CorrelationSurfaceTracker {
-    correlation_surfaces: Vec<HalfEdgeCorrelationSurface>,
-    valid_surfaces: Vec<CSID>,
-    invalid_surfaces: Vec<CSID>,
 }
 
 impl PositionedZX {
@@ -342,6 +331,7 @@ impl PositionedZX {
             let mut basis_surfaces: Vec<HalfEdgeCorrelationSurface> = Vec::new();
 
             for (cs, syndrome) in invalid_surfaces {
+                todo!("This loop is not fully implemented yet.");
                 if vector_basis.len() == generating_set_sz {
                     break;
                 }
@@ -457,6 +447,77 @@ impl PositionedZX {
     fn is_hadamard(graph: &Graph, edge: (V, V)) -> bool {
         graph.edge_type(edge.0, edge.1) == EType::H
     }
+
+    pub fn correlation_surface_is_valid(
+        &self,
+        correlation_surface: &CorrelationSurface,
+    ) -> Result<String, String> {
+        let mut p2v: HashMap<Position3D, usize> = HashMap::new();
+        self.positions.iter().for_each(|(v, p)| {
+            p2v.insert(p.position(), *v);
+        });
+        // check if surface's vertices are in the graph
+        let binding = p2v.keys().map(|pos| *pos).collect::<HashSet<Position3D>>();
+        let positions = correlation_surface.positions();
+        let diff = positions.difference(&binding);
+        if diff.count() > 0 {
+            panic!("Diffs are wrong")
+        }
+
+        // check if correlation surface has all the edges in the graph
+        let edges: Vec<(V, V)> = self.graph.edges().map(|(u, v, _)| (u, v)).collect();
+        for edge in correlation_surface.span() {
+            let (_u, _v) = edge.nodes();
+            let (u, v) = (p2v.get(_u.position()), p2v.get(_v.position()));
+            if u.is_none() || v.is_none() {
+                panic!("Invalid edge")
+            }
+            if !edges.contains(&(*u.unwrap(), *v.unwrap()))
+                && !edges.contains(&(*v.unwrap(), *u.unwrap()))
+            {
+                panic!("Cannot find edge")
+            }
+        }
+
+        // check parity around each vertex
+        for pos in correlation_surface.positions() {
+            let v = *p2v
+                .get(&pos)
+                .expect(&format!("Missing position at {:?}", pos));
+            let pauli = zx_to_pauli(&self.graph, v);
+            let edges = correlation_surface.edges_at(pos);
+            match pauli {
+                Pauli::I => {
+                    continue;
+                }
+                Pauli::Y => {
+                    if edges.len() != 2 || correlation_surface.bases_at(pos).len() != 2 {
+                        panic!("")
+                    }
+                }
+                _ => {
+                    let mut counts: HashMap<Basis, usize> = HashMap::new();
+                    edges
+                        .iter()
+                        .for_each(|edge| *counts.entry(edge.get_basis(pos)).or_insert(0) += 1);
+                    let v_basis = pauli.to_basis().expect("basis");
+                    let t = 0..self.graph.incident_edges(v).count();
+                    if !t.contains(counts.get(&v_basis.flipped()).unwrap()) {
+                        panic!(
+                            "X (Z) type vertex should have Pauli Z (X) Pauli supported on all or no edges, vertex at <pos> violates the rule."
+                        )
+                    }
+                    if counts.get(&v_basis).unwrap() % 2 != 0 {
+                        panic!(
+                            "X (Z) type vertex should have even number of Pauli X (Z) supported on the edges, vertex at <pos> violates the rule."
+                        )
+                    }
+                }
+            }
+        }
+
+        Ok("Valid surface for this".to_string())
+    }
 }
 
 pub struct AddableVertices {
@@ -472,6 +533,6 @@ pub fn vertex_type_to_pauli(vtype: VType, phase: Phase) -> Result<Pauli, &'stati
         (VType::Z, phase) if phase == zero => Ok(Pauli::Z),
         (VType::Z, phase) if phase == half => Ok(Pauli::Y),
         (VType::B, _) => Ok(Pauli::I),
-        _ => Err(""),
+        _ => Err("Invalid vtype and phase {} {}"),
     }
 }

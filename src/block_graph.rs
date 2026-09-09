@@ -13,16 +13,16 @@ use std::{
 use crate::positioned::PositionedZX;
 use crate::{
     correlation::CorrelationSurface,
-    cube::{Cube, CubeKind, CubePosition, Pipe, ZXCube},
+    cube::{Cube, CubeKind, Pipe, Position3D, ZXCube},
 };
 
 #[derive(Clone, Debug)]
 pub struct BlockGraph {
     name: String,
     graph: Graph<Cube, Pipe, Undirected>,
-    node_indices: HashMap<CubePosition, NodeIndex>, // Used for client lookups
+    node_indices: HashMap<Position3D, NodeIndex>, // Used for client lookups
     edge_indices: HashMap<Pipe, EdgeIndex>,
-    ports: HashMap<String, CubePosition>, // TODO: how to add ports?
+    ports: HashMap<String, Position3D>, // TODO: how to add ports?
 }
 
 impl BlockGraph {
@@ -79,7 +79,7 @@ impl BlockGraph {
                             cube_kind = CubeKind::ZX(ZXCube::from_str(&kind)?);
                         }
 
-                        let pos: CubePosition = CubePosition::new(x_coord, y_coord, z_coord);
+                        let pos: Position3D = Position3D::new(x_coord, y_coord, z_coord);
                         let annotation: &str = items[5]; // TODO: how is this used?
                         let cube: Cube = Cube::new(cube_kind, pos);
                         let idx = to_return.graph.add_node(cube);
@@ -164,7 +164,7 @@ impl BlockGraph {
         ((self.num_cubes() - self.num_ports() - self.num_y_half_cubes()) as f64) / 2.0
     }
 
-    pub fn degree(&self, cube_pos: &CubePosition) -> usize {
+    pub fn degree(&self, cube_pos: &Position3D) -> usize {
         let idx: Option<&NodeIndex> = self.node_indices.get(cube_pos);
         match idx {
             Some(val) => self.graph.neighbors(*val).count(),
@@ -172,7 +172,7 @@ impl BlockGraph {
         }
     }
 
-    pub fn leaves(&self) -> impl Iterator<Item = CubePosition> {
+    pub fn leaves(&self) -> impl Iterator<Item = Position3D> {
         self.node_indices
             .keys()
             .filter(|pos| self.degree(pos) == 1)
@@ -186,4 +186,15 @@ impl BlockGraph {
     pub fn find_correlation_surfaces(&self) -> Vec<CorrelationSurface> {
         self.to_zx_graph().find_correlation_surfaces().unwrap()
     }
+
+    pub fn cube_at(&self, position: Position3D) -> &Cube {
+        self.graph
+            .node_weight(*self.node_indices.get(&position).expect("Invalid position"))
+            .expect("Cube missing for position")
+    }
+
+    pub fn has_pipe_between(&self, pos1: Position3D, pos2: Position3D) -> bool {
+        return self.graph.contains_edge(*self.node_indices.get(&pos1).expect("pos1"), *self.node_indices.get(&pos2).expect("pos2"))
+    }
+
 }

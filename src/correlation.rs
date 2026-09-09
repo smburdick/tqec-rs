@@ -5,7 +5,7 @@ use quizx::{
 
 use crate::{
     block_graph::BlockGraph,
-    cube::{Basis, CubePosition},
+    cube::{Basis, Position3D},
     pauli::Pauli,
     positioned::PositionedZX,
     utils::{concat_ints_as_bits, int_to_bit_indices, solve_linear_system, zx_to_pauli},
@@ -20,7 +20,7 @@ use std::{
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, PartialOrd)]
 pub struct ZXNode {
-    position: CubePosition,
+    position: Position3D,
     basis: Basis,
 }
 
@@ -31,11 +31,17 @@ impl fmt::Display for ZXNode {
 }
 
 impl ZXNode {
-    pub fn new(position: CubePosition, basis: Basis) -> Self {
+    pub fn new(position: Position3D, basis: Basis) -> Self {
         Self {
             position: position,
             basis: basis,
         }
+    }
+    pub fn position(&self) -> &Position3D {
+        &self.position
+    }
+    pub fn basis(&self) -> Basis {
+        self.basis
     }
 }
 
@@ -61,6 +67,20 @@ impl ZXEdge {
     pub fn is_self_loop(&self) -> bool {
         return self.u.position == self.v.position;
     }
+
+    pub fn nodes(&self) -> (&ZXNode, &ZXNode) {
+        (&self.u, &self.v)
+    }
+
+    pub fn get_basis(&self, position: Position3D) -> Basis {
+        let u_pos = self.u.position;
+        let v_pos = self.v.position;
+        match position {
+            u_pos => self.u.basis,
+            v_pos => self.v.basis,
+            _ => panic!("Invalid basis"),
+        }
+    }
 }
 
 impl fmt::Display for ZXEdge {
@@ -69,16 +89,25 @@ impl fmt::Display for ZXEdge {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CorrelationSurface {
     edges: HashSet<ZXEdge>, // TODO: rename this to 'span'
+    graph_view: (
+        HashMap<Position3D, HashMap<Position3D, Vec<ZXEdge>>>,
+        HashMap<Position3D, HashSet<Basis>>,
+    ), // used in helper functions
 }
 
 impl CorrelationSurface {
     pub fn new(edges: HashSet<ZXEdge>) -> Self {
         Self {
             edges: edges.clone(),
+            graph_view: Self::graph_view(edges),
         }
+    }
+
+    pub fn span(&self) -> impl Iterator<Item = &ZXEdge> {
+        self.edges.iter()
     }
 
     pub fn num_edges(&self) -> usize {
@@ -89,8 +118,18 @@ impl CorrelationSurface {
         self.num_edges() == 1 && self.edges.iter().next().unwrap().is_self_loop()
     }
 
+    pub fn bases_at(&self, position: Position3D) -> HashSet<Basis> {
+        self.graph_view
+            .1
+            .get(&position)
+            .expect("Failed to find position")
+            .iter()
+            .cloned()
+            .collect::<HashSet<Basis>>()
+    }
+
     pub fn external_stabilizer_on_graph(&self, graph: BlockGraph) -> String {
-        let supports: Vec<CubePosition>;
+        let supports: Vec<Position3D>;
         if graph.is_open() {
             todo!("");
         } else {
@@ -99,36 +138,60 @@ impl CorrelationSurface {
         self.external_stabilizer(supports)
     }
 
-    pub fn external_stabilizer(&self, io_ports: Vec<CubePosition>) -> String {
-        let mut view: HashMap<CubePosition, HashSet<Basis>> = self.graph_view().1;
+    pub fn external_stabilizer(&self, io_ports: Vec<Position3D>) -> String {
+        let view: &HashMap<Position3D, HashSet<Basis>> = &self.graph_view.1;
         io_ports
             .iter()
             .map(|port| {
-                let bases = view.entry(*port).or_default();
-                Pauli::from_basis_set(take(bases)).to_string()
+                let _bases = view.get(port);
+                let bases: HashSet<Basis>;
+                if _bases.is_none() {
+                    bases = HashSet::new();
+                } else {
+                    bases = (*_bases.unwrap()).clone();
+                }
+                Pauli::from_basis_set(bases).to_string()
             })
             .collect::<String>()
     }
 
-    pub fn graph_view(
-        &self,
+    pub fn positions(&self) -> HashSet<Position3D> {
+        return self
+            .graph_view
+            .0
+            .keys()
+            .cloned()
+            .collect::<HashSet<Position3D>>();
+    }
+
+    pub fn edges_at(&self, pos: Position3D) -> HashSet<ZXEdge> {
+        self.graph_view
+            .0
+            .get(&pos)
+            .expect("position")
+            .values()
+            .cloned()
+            .flatten()
+            .into_iter()
+            .collect::<HashSet<ZXEdge>>()
+    }
+
+    fn graph_view(
+        _edges: HashSet<ZXEdge>,
     ) -> (
-        HashMap<CubePosition, HashMap<CubePosition, Vec<ZXEdge>>>,
-        HashMap<CubePosition, HashSet<Basis>>,
+        HashMap<Position3D, HashMap<Position3D, Vec<ZXEdge>>>,
+        HashMap<Position3D, HashSet<Basis>>,
     ) {
         let mut edges = HashMap::new();
         let mut bases = HashMap::new();
-        if self.is_single_node() {
-            let edge = self
-                .edges
-                .iter()
-                .next()
-                .expect("Single node CS missing edge");
+        if _edges.len() == 1 {
+            //&& _edges.iter().next().is_self_loop() {
+            let edge = _edges.iter().next().expect("Single node CS missing edge");
             let pos = edge.u.position;
             edges.insert(pos, HashMap::from([(pos, vec![edge.clone()])]));
             bases.insert(pos, HashSet::from([edge.u.basis]));
         } else {
-            for edge in self.edges.iter() {
+            for edge in _edges.iter() {
                 let (u, v) = (edge.u.position, edge.v.position);
                 edges
                     .entry(u)
@@ -193,7 +256,7 @@ impl HalfEdgeCorrelationSurface {
         let passthru_parity = paulis
             .iter()
             .copied()
-            .reduce(|acc, p| acc.xor(p))
+            .reduce(|acc, p| acc ^ p)
             .expect("Passthru parity")
             .contains(basis);
 
@@ -276,7 +339,7 @@ impl HalfEdgeCorrelationSurface {
 
                     let other_pauli = neighbor_row.get(n).expect("neighbor missing from mapping");
 
-                    res_pauli = res_pauli.xor(*other_pauli);
+                    res_pauli ^= *other_pauli;
                 }
                 val.insert(*n, res_pauli);
             }
@@ -321,7 +384,7 @@ impl HalfEdgeCorrelationSurface {
                     && pauli_u.contains(xz_u)
                     && pauli_v.contains(xz_v)
                 {
-                    let basis_u = bases[(xz_u.value() >> 1) as usize];
+                    let basis_u = bases[(xz_u >> 1) as usize];
                     let basis_v = bases[(xz_v.value() >> 1) as usize];
 
                     let node_u = zx_nodes
@@ -352,7 +415,7 @@ pub fn generate_valid_local_paulis(
 ) -> Vec<Vec<Pauli>> {
     let mut result: Vec<Vec<Pauli>> = Vec::new();
     let unconnected_neighbors = 0..num_unconnected_neighbors;
-    let combined_pauli = broadcast_pauli.xor(node_basis);
+    let combined_pauli = broadcast_pauli ^ node_basis;
     if generate_all {
         let passthru_nodes = ((passthrough_parity as usize)..(unconnected_neighbors.len() + 1))
             .step_by(2)
