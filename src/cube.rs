@@ -237,6 +237,9 @@ impl Pipe {
                 .expect("Pipe has invalid direction"),
         )
     }
+    pub fn as_tuple(&self) -> (Option<Basis>, Option<Basis>, Option<Basis>) {
+        (self.x, self.y, self.z)
+    }
 }
 
 #[repr(usize)]

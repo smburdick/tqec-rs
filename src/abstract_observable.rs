@@ -24,6 +24,22 @@ bitflags! {
 }
 
 impl SpatialArms {
+
+    pub fn from_cube_in_graph(cube: &Cube, block_graph: &BlockGraph) -> Self {
+      if !cube.is_spatial() {
+        return SpatialArms::NONE;
+      }
+      // TODO: do we need to check if cube is in the graph
+      let mut spatial_arms = SpatialArms::NONE;
+      let pos = cube.position();
+      for (flag, (dx, dy)) in SpatialArms::get_map_from_arm_shift() {
+        if block_graph.has_pipe_between(pos, pos.shift_by(dx, dy, 0)) {
+          spatial_arms |= flag;
+        }
+      }
+      spatial_arms
+    }
+
     pub fn get_map_from_arm_shift() -> HashMap<SpatialArms, (i32, i32)> {
         HashMap::from([
             (Self::UP, (0, -1)),
@@ -178,8 +194,8 @@ impl AbstractObservable {
 }
 
 pub fn compile_correlation_surface_to_abstract_observable(
-    block_graph: BlockGraph,
-    correlation_surface: CorrelationSurface,
+    block_graph: &BlockGraph,
+    correlation_surface: &CorrelationSurface,
     include_temporal_hadamard_pipes: bool,
 ) -> AbstractObservable {
     if correlation_surface.is_single_node() {
@@ -269,8 +285,39 @@ pub fn compile_correlation_surface_to_abstract_observable(
         }
     }
 
-    // TODO: handle the pipes
+    // vertical pipes
+    for zx_edge in correlation_surface.span() {
+      let (u, v) = zx_edge.nodes();
+      let pipe = block_graph.get_pipe(*u.position(), *v.position());
+      let (pipe_u, pipe_v) = block_graph.spanning_cubes_of(pipe);
+      if pipe.direction().expect("direction") == Direction3D::Z {
+        // Temporal Hadamard might have measurements that should be included
+        // during realignment of plaquettes under fixed-bulk convention
+        if include_temporal_hadamard_pipes && pipe.has_hadamard() {
+          temporal_hadamard_pipes.insert(PipeWithObservableBasis { pipe: pipe.clone(), observable_basis: u.basis() });
+          if has_obs_include(pipe_v, v.basis(), &block_graph) {
+            top_readout_cubes.insert(CubeWithArms { cube: pipe_v.clone(), arms: SpatialArms::NONE });
+          }
+          continue;
+        }
+      }
 
+      // horizontal pipes
+      let arms_u = if pipe_u.is_spatial() { SpatialArms::from_cube_in_graph(pipe_u, &block_graph)  } else { SpatialArms::NONE };
+      let arms_v = if pipe_v.is_spatial() { SpatialArms::from_cube_in_graph(pipe_v, &block_graph)  } else { SpatialArms::NONE };
+      let pipe_top_face = pipe.as_tuple().2.unwrap();
+      if pipe_top_face == u.basis() { // There is correlation surface attached to the top of the pipe
+        top_readout_pipes.insert(PipeWithArms { pipe: pipe.clone(), cube_arms: (arms_u, arms_v) });
+        for (cube, n) in [ (pipe_u, u), (pipe_v, v) ] {
+          if cube.is_spatial() {
+            continue;
+          }
+          if has_obs_include(cube, n.basis(), &block_graph) {
+            top_readout_cubes.insert(CubeWithArms { cube: cube.clone(), arms: SpatialArms::NONE });
+          }
+        }
+      }
+    }
 
     AbstractObservable {
         top_readout_cubes: top_readout_cubes,
@@ -282,7 +329,7 @@ pub fn compile_correlation_surface_to_abstract_observable(
 }
 
 
-fn has_obs_include(cube: Cube, correlation: Basis, block_graph: BlockGraph) -> bool {
+fn has_obs_include(cube: &Cube, correlation: Basis, block_graph: &BlockGraph) -> bool {
   // Check if the top data qubit readout should be included in the observable.
   if cube.kind() == CubeKind::YHalfCube {
     return true;

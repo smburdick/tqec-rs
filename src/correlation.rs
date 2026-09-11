@@ -128,10 +128,10 @@ impl CorrelationSurface {
             .collect::<HashSet<Basis>>()
     }
 
-    pub fn external_stabilizer_on_graph(&self, graph: BlockGraph) -> String {
+    pub fn external_stabilizer_on_graph(&self, graph: &BlockGraph) -> String {
         let supports: Vec<Position3D>;
         if graph.is_open() {
-            todo!("");
+            supports = graph.ordered_port_positions()
         } else {
             supports = graph.leaves().collect();
         }
@@ -174,6 +174,20 @@ impl CorrelationSurface {
             .flatten()
             .into_iter()
             .collect::<HashSet<ZXEdge>>()
+    }
+
+    pub fn shift_by(&self, dx: i32, dy: i32, dz: i32) -> Self {
+        let mut nodes: HashMap<ZXNode, ZXNode> = HashMap::new();
+        for position in self.positions() {
+            let new_position = Position3D::new(position.x() + dx, position.y() + dy, position.z() + dz);
+            for basis in self.bases_at(position) {
+                let old_node = ZXNode::new(position, basis);
+                let new_node = ZXNode::new(new_position, basis);
+                nodes.insert(old_node, new_node);
+            }
+        }
+        let edges = self.edges.iter().map(|edge| ZXEdge::new(*nodes.get(&edge.u).expect("msg"), *nodes.get(&edge.v).expect("msg")).sorted() ).collect::<HashSet<ZXEdge>>();
+        CorrelationSurface::new(edges)
     }
 
     fn graph_view(
@@ -256,7 +270,7 @@ impl HalfEdgeCorrelationSurface {
         let passthru_parity = paulis
             .iter()
             .copied()
-            .reduce(|acc, p| acc ^ p)
+            .reduce(|acc, p| acc.xor(p))
             .expect("Passthru parity")
             .contains(basis);
 
@@ -339,7 +353,7 @@ impl HalfEdgeCorrelationSurface {
 
                     let other_pauli = neighbor_row.get(n).expect("neighbor missing from mapping");
 
-                    res_pauli ^= *other_pauli;
+                    res_pauli = res_pauli.xor(*other_pauli);
                 }
                 val.insert(*n, res_pauli);
             }
@@ -384,7 +398,7 @@ impl HalfEdgeCorrelationSurface {
                     && pauli_u.contains(xz_u)
                     && pauli_v.contains(xz_v)
                 {
-                    let basis_u = bases[(xz_u >> 1) as usize];
+                    let basis_u = bases[(xz_u.value() >> 1) as usize];
                     let basis_v = bases[(xz_v.value() >> 1) as usize];
 
                     let node_u = zx_nodes
@@ -406,7 +420,6 @@ impl HalfEdgeCorrelationSurface {
 }
 
 pub fn generate_valid_local_paulis(
-    // FIXME: this doesn't match Python?
     node_basis: Pauli,
     broadcast_pauli: Pauli,
     passthrough_parity: bool,
@@ -415,7 +428,7 @@ pub fn generate_valid_local_paulis(
 ) -> Vec<Vec<Pauli>> {
     let mut result: Vec<Vec<Pauli>> = Vec::new();
     let unconnected_neighbors = 0..num_unconnected_neighbors;
-    let combined_pauli = broadcast_pauli ^ node_basis;
+    let combined_pauli = broadcast_pauli.xor(node_basis);
     if generate_all {
         let passthru_nodes = ((passthrough_parity as usize)..(unconnected_neighbors.len() + 1))
             .step_by(2)

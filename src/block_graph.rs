@@ -1,3 +1,4 @@
+use itertools::{Itertools, Position};
 use petgraph::{
     Graph, Undirected,
     graph::{EdgeIndex, NodeIndex, UnGraph},
@@ -69,19 +70,23 @@ impl BlockGraph {
                         let y_coord: i32 = items[2].parse().expect("Y coordinate");
                         let z_coord: i32 = items[3].parse().expect("Z coordinate");
                         let kind: String = items[4].to_uppercase();
+                        let annotation: &str = items[5]; // TODO: how is this used?
+                        let pos: Position3D = Position3D::new(x_coord, y_coord, z_coord);
 
                         let cube_kind: CubeKind;
                         if kind == "OOO" || kind == "P" || kind == "PORT" {
                             cube_kind = CubeKind::PortCube;
+                            if to_return.ports.contains_key(annotation) {
+                                return Err("Duplicate port.".to_string());
+                            }
+                            to_return.ports.insert(annotation.to_string(), pos.clone());
                         } else if kind.contains("Y") {
                             cube_kind = CubeKind::YHalfCube;
                         } else {
                             cube_kind = CubeKind::ZX(ZXCube::from_str(&kind)?);
                         }
 
-                        let pos: Position3D = Position3D::new(x_coord, y_coord, z_coord);
-                        let annotation: &str = items[5]; // TODO: how is this used?
-                        let cube: Cube = Cube::new(cube_kind, pos);
+                        let cube: Cube = Cube::new(cube_kind, pos.clone());
                         let idx = to_return.graph.add_node(cube);
                         to_return.node_indices.insert(pos, idx);
                         cubeIdToNodeIndex.insert(cube_id.to_string(), idx);
@@ -123,6 +128,10 @@ impl BlockGraph {
         self.ports.len()
     }
 
+    pub fn ordered_port_positions(&self) -> Vec<Position3D> {
+        self.ports.keys().sorted().map(|str| *self.ports.get(str).unwrap()).collect::<Vec<Position3D>>()
+    }
+
     pub fn cubes(&self) -> Vec<&Cube> {
         self.graph.node_weights().collect()
     }
@@ -139,6 +148,12 @@ impl BlockGraph {
         let cube1 = self.graph.node_weight(idx1).unwrap();
         let cube2 = self.graph.node_weight(idx2).unwrap();
         (cube1, cube2)
+    }
+
+    pub fn get_pipe(&self, pos1: Position3D, pos2: Position3D) -> &Pipe {
+        let (n1, n2) = (*self.node_indices.get(&pos1).expect("Node1"), *self.node_indices.get(&pos2).expect("Node2"));
+        let e_idx = self.graph.find_edge(n1, n2).expect("Edge");
+        self.graph.edge_weight(e_idx).expect("pipe")
     }
 
     pub fn num_y_half_cubes(&self) -> usize {
