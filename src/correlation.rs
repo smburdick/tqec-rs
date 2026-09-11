@@ -179,14 +179,25 @@ impl CorrelationSurface {
     pub fn shift_by(&self, dx: i32, dy: i32, dz: i32) -> Self {
         let mut nodes: HashMap<ZXNode, ZXNode> = HashMap::new();
         for position in self.positions() {
-            let new_position = Position3D::new(position.x() + dx, position.y() + dy, position.z() + dz);
+            let new_position =
+                Position3D::new(position.x() + dx, position.y() + dy, position.z() + dz);
             for basis in self.bases_at(position) {
                 let old_node = ZXNode::new(position, basis);
                 let new_node = ZXNode::new(new_position, basis);
                 nodes.insert(old_node, new_node);
             }
         }
-        let edges = self.edges.iter().map(|edge| ZXEdge::new(*nodes.get(&edge.u).expect("msg"), *nodes.get(&edge.v).expect("msg")).sorted() ).collect::<HashSet<ZXEdge>>();
+        let edges = self
+            .edges
+            .iter()
+            .map(|edge| {
+                ZXEdge::new(
+                    *nodes.get(&edge.u).expect("msg"),
+                    *nodes.get(&edge.v).expect("msg"),
+                )
+                .sorted()
+            })
+            .collect::<HashSet<ZXEdge>>();
         CorrelationSurface::new(edges)
     }
 

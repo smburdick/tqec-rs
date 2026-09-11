@@ -129,7 +129,11 @@ impl BlockGraph {
     }
 
     pub fn ordered_port_positions(&self) -> Vec<Position3D> {
-        self.ports.keys().sorted().map(|str| *self.ports.get(str).unwrap()).collect::<Vec<Position3D>>()
+        self.ports
+            .keys()
+            .sorted()
+            .map(|str| *self.ports.get(str).unwrap())
+            .collect::<Vec<Position3D>>()
     }
 
     pub fn cubes(&self) -> Vec<&Cube> {
@@ -151,7 +155,10 @@ impl BlockGraph {
     }
 
     pub fn get_pipe(&self, pos1: Position3D, pos2: Position3D) -> &Pipe {
-        let (n1, n2) = (*self.node_indices.get(&pos1).expect("Node1"), *self.node_indices.get(&pos2).expect("Node2"));
+        let (n1, n2) = (
+            *self.node_indices.get(&pos1).expect("Node1"),
+            *self.node_indices.get(&pos2).expect("Node2"),
+        );
         let e_idx = self.graph.find_edge(n1, n2).expect("Edge");
         self.graph.edge_weight(e_idx).expect("pipe")
     }
@@ -209,7 +216,9 @@ impl BlockGraph {
     }
 
     pub fn has_pipe_between(&self, pos1: Position3D, pos2: Position3D) -> bool {
-        return self.graph.contains_edge(*self.node_indices.get(&pos1).expect("pos1"), *self.node_indices.get(&pos2).expect("pos2"))
+        return self.graph.contains_edge(
+            *self.node_indices.get(&pos1).expect("pos1"),
+            *self.node_indices.get(&pos2).expect("pos2"),
+        );
     }
-
 }

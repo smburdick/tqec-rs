@@ -452,7 +452,6 @@ impl PositionedZX {
         &self,
         correlation_surface: &CorrelationSurface,
     ) -> Result<String, String> {
-
         let mut p2v: HashMap<Position3D, usize> = HashMap::new();
         self.positions.iter().for_each(|(v, p)| {
             p2v.insert(p.position(), *v);

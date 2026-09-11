@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use crate::{cube::Basis};
+use crate::cube::Basis;
 
 #[repr(usize)]
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
