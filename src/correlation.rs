@@ -249,6 +249,12 @@ pub struct HalfEdgeCorrelationSurface {
     pub mapping: HashMap<V, HashMap<V, Pauli>>,
 }
 
+pub enum ValidationResult {
+    None,
+    Single(usize),
+    Pair(Pauli, bool)
+}
+
 impl HalfEdgeCorrelationSurface {
     pub fn new() -> Self {
         Self {
@@ -272,10 +278,10 @@ impl HalfEdgeCorrelationSurface {
         node: V,
         basis: Pauli,
         has_unconnected_neighbors: bool,
-    ) -> (Option<Pauli>, Option<bool>, Option<usize>) {
+    ) -> ValidationResult {
         let paulis: Vec<Pauli> = self.paulis_at_nodes(iter::once(node)).collect();
         if paulis.len() == 0 {
-            return (None, None, None);
+            return ValidationResult::None;
         }
 
         let passthru_parity = paulis
@@ -306,15 +312,12 @@ impl HalfEdgeCorrelationSurface {
         }
 
         if valid {
-            return (Some(broadcast_pauli), Some(passthru_parity), None);
+            return ValidationResult::Pair(broadcast_pauli, passthru_parity);
         } else {
-            return (
-                None,
-                None,
-                Some(concat_ints_as_bits(
+            return ValidationResult::Single(concat_ints_as_bits(
                     syndrome.iter().map(|&b| b as usize),
                     repeat(1),
-                )),
+                ),
             );
         }
     }

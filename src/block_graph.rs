@@ -37,9 +37,9 @@ impl BlockGraph {
         }
     }
 
-    pub fn from_bgraph_file(filepath: &str) -> Result<Self, String> {
+    pub fn from_bgraph_file(filepath: String) -> Result<Self, String> {
         // Based on https://tqec.github.io/tqec/user_guide/bgraph.html
-        let path = Path::new(filepath);
+        let path = Path::new(&filepath);
         let file = File::open(&path);
         let mut to_return = Self::new(format!("block_graph[{}]", filepath));
         match file {

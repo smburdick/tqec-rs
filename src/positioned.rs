@@ -8,15 +8,9 @@ use quizx::{
 };
 
 use crate::{
-    block_graph::BlockGraph,
-    correlation::{
-        CorrelationSurface, HalfEdgeCorrelationSurface, ZXEdge, ZXNode,
-        expand_correlation_surface_to_node, find_correlation_surfaces_from_leaf,
-        reform_correlation_surface_generators,
-    },
-    cube::{Basis, Cube, CubeKind, Position3D},
-    pauli::Pauli,
-    utils::{solve_linear_system, zx_to_pauli},
+    block_graph::BlockGraph, correlation::{
+        CorrelationSurface, HalfEdgeCorrelationSurface, ValidationResult, ZXEdge, ZXNode, expand_correlation_surface_to_node, find_correlation_surfaces_from_leaf, reform_correlation_surface_generators,
+    }, cube::{Basis, Cube, CubeKind, Position3D}, pauli::Pauli, utils::{solve_linear_system, zx_to_pauli},
 }; // TODO: decide which kind of graph to use (vec or hash)
 
 pub struct PositionedZX {
@@ -305,50 +299,56 @@ impl PositionedZX {
             let mut vector_basis: HashMap<usize, (usize, usize)> = HashMap::new();
 
             for cs in (std::iter::once(&correlation_surface)).chain(correlation_surfaces.iter()) {
-                let (p, b, u) = cs.validate_node(
+                match cs.validate_node(
                     current_node,
                     passthrough_basis,
                     unconnected_neighbors.len() > 0,
-                );
-                if u.is_some() {
-                    invalid_surfaces.push((cs.clone(), u.unwrap()));
-                    continue;
-                }
+                ) {
+                    ValidationResult::Single(u) => {
+                        invalid_surfaces.push((cs.clone(), u));
+                        continue;
+                    },
+                    ValidationResult::Pair(pauli, parity) => {
+                        let x = cs.signature_at_nodes(boundary_nodes.clone().into_iter(), pauli_value, 2);
 
-                let x = cs.signature_at_nodes(boundary_nodes.clone().into_iter(), pauli_value, 2);
+                        if solve_linear_system(&mut vector_basis, x, true).is_err() {
 
-                if solve_linear_system(&mut vector_basis, x, true).is_err() {
-                    if !p.is_none() && !b.is_none() {
-                        valid_surfaces.push((cs.clone(), p.unwrap(), b.unwrap()));
-                    }
-                    if vector_basis.len() == generating_set_sz {
-                        break;
-                    }
+                            valid_surfaces.push((cs.clone(), pauli, parity));
+
+                            if vector_basis.len() == generating_set_sz {
+                                break;
+                            }
+                        }
+                    },
+                    _ => {}
                 }
+                
             }
-            // TODO: try to fix local constraint violations by XORing with other invalid surfaces
+
+            // try to fix local constraint violations by XORing with other invalid surfaces
             let mut syndrome_basis: HashMap<usize, (usize, usize)> = HashMap::new();
             let mut basis_surfaces: Vec<HalfEdgeCorrelationSurface> = Vec::new();
 
             for (cs, syndrome) in invalid_surfaces {
-                todo!("This loop is not fully implemented yet.");
+
                 if vector_basis.len() == generating_set_sz {
                     break;
                 }
-                // python: iterate over enumerate((syndrome ^ all_one, syndrome))
+
                 let all_one = (1 << connected_neighbors.len()) - 1;
                 for (j, target) in [syndrome ^ all_one, syndrome].iter().enumerate() {
                     let indices = solve_linear_system(&mut syndrome_basis, *target, j != 0);
-                    if indices.is_ok() {
-                        let _indices = indices.unwrap();
-                        if _indices.len() == 0 {
-                            if j == 1 {
+
+                    if indices.is_err() {
+                         if j == 1 {
                                 basis_surfaces.push(cs.clone());
                             }
-                            continue;
-                        }
+                        continue;
+                    }
 
-                        let input: Vec<&HalfEdgeCorrelationSurface> = _indices
+                    if indices.is_ok() {
+
+                        let input: Vec<&HalfEdgeCorrelationSurface> = indices.unwrap()
                             .iter()
                             .map(|k| basis_surfaces.get(*k as usize).unwrap())
                             .chain(std::iter::once(&correlation_surface))
@@ -367,12 +367,16 @@ impl PositionedZX {
                         )
                         .is_ok()
                         {
-                            let (u, b, _) = new_correlation_surface.validate_node(
+                            match new_correlation_surface.validate_node(
                                 current_node,
                                 passthrough_basis,
                                 unconnected_neighbors.len() > 0,
-                            );
-                            valid_surfaces.push((new_correlation_surface, u.unwrap(), b.unwrap()));
+                            ) {
+                                ValidationResult::Pair(pauli, parity) => {
+                                    valid_surfaces.push((new_correlation_surface, pauli, parity));
+                                }
+                                _ => {}
+                            }
                             break;
                         }
                     }
