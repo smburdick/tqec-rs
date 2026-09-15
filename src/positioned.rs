@@ -8,9 +8,15 @@ use quizx::{
 };
 
 use crate::{
-    block_graph::BlockGraph, correlation::{
-        CorrelationSurface, HalfEdgeCorrelationSurface, ValidationResult, ZXEdge, ZXNode, expand_correlation_surface_to_node, find_correlation_surfaces_from_leaf, reform_correlation_surface_generators,
-    }, cube::{Basis, Cube, CubeKind, Position3D}, pauli::Pauli, utils::{solve_linear_system, zx_to_pauli},
+    block_graph::BlockGraph,
+    correlation::{
+        CorrelationSurface, HalfEdgeCorrelationSurface, ValidationResult, ZXEdge, ZXNode,
+        expand_correlation_surface_to_node, find_correlation_surfaces_from_leaf,
+        reform_correlation_surface_generators,
+    },
+    cube::{Basis, Cube, CubeKind, Position3D},
+    pauli::Pauli,
+    utils::{solve_linear_system, zx_to_pauli},
 }; // TODO: decide which kind of graph to use (vec or hash)
 
 pub struct PositionedZX {
@@ -307,22 +313,24 @@ impl PositionedZX {
                     ValidationResult::Single(u) => {
                         invalid_surfaces.push((cs.clone(), u));
                         continue;
-                    },
+                    }
                     ValidationResult::Pair(pauli, parity) => {
-                        let x = cs.signature_at_nodes(boundary_nodes.clone().into_iter(), pauli_value, 2);
+                        let x = cs.signature_at_nodes(
+                            boundary_nodes.clone().into_iter(),
+                            pauli_value,
+                            2,
+                        );
 
                         if solve_linear_system(&mut vector_basis, x, true).is_err() {
-
                             valid_surfaces.push((cs.clone(), pauli, parity));
 
                             if vector_basis.len() == generating_set_sz {
                                 break;
                             }
                         }
-                    },
+                    }
                     _ => {}
                 }
-                
             }
 
             // try to fix local constraint violations by XORing with other invalid surfaces
@@ -330,7 +338,6 @@ impl PositionedZX {
             let mut basis_surfaces: Vec<HalfEdgeCorrelationSurface> = Vec::new();
 
             for (cs, syndrome) in invalid_surfaces {
-
                 if vector_basis.len() == generating_set_sz {
                     break;
                 }
@@ -340,15 +347,15 @@ impl PositionedZX {
                     let indices = solve_linear_system(&mut syndrome_basis, *target, j != 0);
 
                     if indices.is_err() {
-                         if j == 1 {
-                                basis_surfaces.push(cs.clone());
-                            }
+                        if j == 1 {
+                            basis_surfaces.push(cs.clone());
+                        }
                         continue;
                     }
 
                     if indices.is_ok() {
-
-                        let input: Vec<&HalfEdgeCorrelationSurface> = indices.unwrap()
+                        let input: Vec<&HalfEdgeCorrelationSurface> = indices
+                            .unwrap()
                             .iter()
                             .map(|k| basis_surfaces.get(*k as usize).unwrap())
                             .chain(std::iter::once(&correlation_surface))

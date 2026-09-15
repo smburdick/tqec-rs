@@ -252,7 +252,7 @@ pub struct HalfEdgeCorrelationSurface {
 pub enum ValidationResult {
     None,
     Single(usize),
-    Pair(Pauli, bool)
+    Pair(Pauli, bool),
 }
 
 impl HalfEdgeCorrelationSurface {
@@ -315,10 +315,9 @@ impl HalfEdgeCorrelationSurface {
             return ValidationResult::Pair(broadcast_pauli, passthru_parity);
         } else {
             return ValidationResult::Single(concat_ints_as_bits(
-                    syndrome.iter().map(|&b| b as usize),
-                    repeat(1),
-                ),
-            );
+                syndrome.iter().map(|&b| b as usize),
+                repeat(1),
+            ));
         }
     }
 

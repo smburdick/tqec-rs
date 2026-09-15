@@ -16,7 +16,6 @@ fn main() {
 }
 
 fn basic_all_test() {
-
     for file in ["move_rotation", "three_cnots", "cz", "steane"] {
         let parse_res = BlockGraph::from_bgraph_file(format!("bgraphs/{}.bgraph", file));
         match parse_res {
@@ -34,5 +33,4 @@ fn basic_all_test() {
             Err(msg) => println!("{}", msg),
         }
     }
-
 }
