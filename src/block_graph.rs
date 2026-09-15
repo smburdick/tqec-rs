@@ -1,4 +1,4 @@
-use itertools::{Itertools, Position};
+use itertools::Itertools;
 use petgraph::{
     Graph, Undirected,
     graph::{EdgeIndex, NodeIndex, UnGraph},
@@ -15,6 +15,7 @@ use crate::positioned::PositionedZX;
 use crate::{
     correlation::CorrelationSurface,
     cube::{Cube, CubeKind, Pipe, Position3D, ZXCube},
+    types::coord,
 };
 
 #[derive(Clone, Debug)]
@@ -66,9 +67,9 @@ impl BlockGraph {
                         let items: Vec<&str> = _line.split(";").collect();
 
                         let cube_id: &str = items[0];
-                        let x_coord: i32 = items[1].parse().expect("X coordinate");
-                        let y_coord: i32 = items[2].parse().expect("Y coordinate");
-                        let z_coord: i32 = items[3].parse().expect("Z coordinate");
+                        let x_coord: coord = items[1].parse().expect("X coordinate");
+                        let y_coord: coord = items[2].parse().expect("Y coordinate");
+                        let z_coord: coord = items[3].parse().expect("Z coordinate");
                         let kind: String = items[4].to_uppercase();
                         let annotation: &str = items[5]; // TODO: how is this used?
                         let pos: Position3D = Position3D::new(x_coord, y_coord, z_coord);

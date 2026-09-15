@@ -1,3 +1,4 @@
+use crate::types::coord;
 use rand::random;
 use std::{fmt, iter::once, str::FromStr};
 
@@ -42,25 +43,25 @@ impl fmt::Display for Basis {
 
 #[derive(PartialEq, Eq, Hash, Debug, Copy, Clone, Ord, PartialOrd)]
 pub struct Position3D {
-    x: i32,
-    y: i32,
-    z: i32,
+    x: coord,
+    y: coord,
+    z: coord,
 }
 
 impl Position3D {
-    pub fn new(x: i32, y: i32, z: i32) -> Position3D {
+    pub fn new(x: coord, y: coord, z: coord) -> Position3D {
         Self { x: x, y: y, z: z }
     }
-    pub fn x(&self) -> i32 {
+    pub fn x(&self) -> coord {
         self.x
     }
-    pub fn y(&self) -> i32 {
+    pub fn y(&self) -> coord {
         self.y
     }
-    pub fn z(&self) -> i32 {
+    pub fn z(&self) -> coord {
         self.z
     }
-    pub fn shift_by(&self, dx: i32, dy: i32, dz: i32) -> Self {
+    pub fn shift_by(&self, dx: coord, dy: coord, dz: coord) -> Self {
         Self {
             x: self.x + dx,
             y: self.y + dy,

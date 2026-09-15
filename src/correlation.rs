@@ -8,6 +8,7 @@ use crate::{
     cube::{Basis, Position3D},
     pauli::Pauli,
     positioned::PositionedZX,
+    types::coord,
     utils::{concat_ints_as_bits, int_to_bit_indices, solve_linear_system, zx_to_pauli},
 };
 use core::fmt;
@@ -15,7 +16,6 @@ use itertools::Itertools;
 use std::{
     collections::{HashMap, HashSet},
     iter::{self, repeat},
-    mem::take,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, PartialOrd)]
@@ -176,7 +176,7 @@ impl CorrelationSurface {
             .collect::<HashSet<ZXEdge>>()
     }
 
-    pub fn shift_by(&self, dx: i32, dy: i32, dz: i32) -> Self {
+    pub fn shift_by(&self, dx: coord, dy: coord, dz: coord) -> Self {
         let mut nodes: HashMap<ZXNode, ZXNode> = HashMap::new();
         for position in self.positions() {
             let new_position =

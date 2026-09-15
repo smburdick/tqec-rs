@@ -23,9 +23,6 @@ where
     result
 }
 
-//     return sum(x << shift for x, shift in zip(ints, chain([0], accumulate(bit_length))))
-
-// FIXME: in the case where x = 10, should return zero, when it's currently not.
 pub fn solve_linear_system(
     basis: &mut HashMap<usize, (usize, usize)>,
     x: usize,

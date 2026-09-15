@@ -17,7 +17,7 @@ use crate::{
     cube::{Basis, Cube, CubeKind, Position3D},
     pauli::Pauli,
     utils::{solve_linear_system, zx_to_pauli},
-}; // TODO: decide which kind of graph to use (vec or hash)
+};
 
 pub struct PositionedZX {
     /// Conversion of BlockGraph into PyZX structures

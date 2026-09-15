@@ -1,6 +1,5 @@
 use std::{
     collections::{HashMap, HashSet},
-    io::pipe,
 };
 
 use bitflags::bitflags;
@@ -8,8 +7,8 @@ use bitflags::bitflags;
 use crate::{
     block_graph::BlockGraph,
     correlation::{CorrelationSurface, ZXEdge},
-    cube::{Basis, Cube, CubeKind, Direction3D, Pipe, Position3D, ZXCube},
-    positioned::PositionedZX,
+    cube::{Basis, Cube, CubeKind, Direction3D, Pipe, Position3D},
+    types::coord,
 };
 
 bitflags! {
@@ -39,7 +38,7 @@ impl SpatialArms {
         spatial_arms
     }
 
-    pub fn get_map_from_arm_shift() -> HashMap<SpatialArms, (i32, i32)> {
+    pub fn get_map_from_arm_shift() -> HashMap<SpatialArms, (coord, coord)> {
         HashMap::from([
             (Self::UP, (0, -1)),
             (Self::RIGHT, (1, 0)),
@@ -146,7 +145,7 @@ impl AbstractObservable {
     // I elected to encode this in the graph itself, so any reference to pipe objects
     // must include that.
     // Which is already the case when AbstractObservable is produced anyway ...
-    pub fn slice_at_z(&self, graph: BlockGraph, z: i32) -> Self {
+    pub fn slice_at_z(&self, graph: BlockGraph, z: coord) -> Self {
         let top_readout_cubes = self
             .top_readout_cubes
             .iter()
