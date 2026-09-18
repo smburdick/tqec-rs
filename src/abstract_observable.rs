@@ -1,6 +1,4 @@
-use std::{
-    collections::{HashMap, HashSet},
-};
+use std::collections::{HashMap, HashSet};
 
 use bitflags::bitflags;
 
@@ -103,8 +101,7 @@ pub struct PipeWithObservableBasis {
 
 impl PipeWithObservableBasis {
     pub fn new(pipe: Pipe, observable_basis: Basis) -> Result<Self, String> {
-        if !pipe.has_hadamard() || pipe.direction().expect("Valid pipe direction") != Direction3D::Z
-        {
+        if !pipe.has_hadamard() || pipe.direction() != Direction3D::Z {
             Err("Pipes must be temporal Hadamard.".to_string())
         } else {
             Ok(Self {
@@ -288,7 +285,7 @@ pub fn compile_correlation_surface_to_abstract_observable(
         let (u, v) = zx_edge.nodes();
         let pipe = block_graph.get_pipe(*u.position(), *v.position());
         let (pipe_u, pipe_v) = block_graph.spanning_cubes_of(pipe);
-        if pipe.direction().expect("direction") == Direction3D::Z {
+        if pipe.direction() == Direction3D::Z {
             // Temporal Hadamard might have measurements that should be included
             // during realignment of plaquettes under fixed-bulk convention
             if include_temporal_hadamard_pipes && pipe.has_hadamard() {

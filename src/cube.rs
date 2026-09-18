@@ -1,4 +1,5 @@
 use crate::types::coord;
+use itertools::Position;
 use rand::random;
 use std::{fmt, iter::once, str::FromStr};
 
@@ -161,6 +162,15 @@ impl ZXCube {
             _ => Basis::X,
         }
     }
+
+    pub fn get_basis_along(&self, direction: Direction3D) -> Basis {
+        let (x, y, z) = self.as_tuple();
+        match direction {
+            Direction3D::X => x,
+            Direction3D::Y => y,
+            Direction3D::Z => z,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
@@ -222,7 +232,7 @@ impl Pipe {
                 if basis.is_some() {
                     basis.expect("msg").to_string()
                 } else {
-                    String::from("0")
+                    String::from("O") // TODO: O or 0?
                 }
             })
             .chain(once(String::from(if self.has_hadamard { "H" } else { "" })))
@@ -231,20 +241,39 @@ impl Pipe {
     pub fn has_hadamard(&self) -> bool {
         self.has_hadamard
     }
-    pub fn direction(&self) -> Option<Direction3D> {
+    pub fn direction(&self) -> Direction3D {
         Direction3D::from_int(
             self.to_string()
-                .find("0")
+                .find("O") // invariant: assume all pipes have an opening
                 .expect("Pipe has invalid direction"),
         )
+        .unwrap()
     }
     pub fn as_tuple(&self) -> (Option<Basis>, Option<Basis>, Option<Basis>) {
         (self.x, self.y, self.z)
     }
+    pub fn get_basis_along(&self, direction: Direction3D, at_head: bool) -> Result<Basis, String> {
+        if direction == self.direction() {
+            return Err("".to_string());
+        }
+        let head_basis = Basis::from_str(
+            &self
+                .to_string()
+                .chars()
+                .nth(direction as usize)
+                .expect("msg")
+                .to_string(),
+        )
+        .expect("msg");
+        if !at_head && self.has_hadamard() {
+            return Ok(head_basis.flipped());
+        }
+        Ok(head_basis)
+    }
 }
 
 #[repr(usize)]
-#[derive(PartialEq)]
+#[derive(PartialEq, Eq, Hash, Copy, Clone)]
 pub enum Direction3D {
     X = 0,
     Y = 1,
@@ -259,5 +288,15 @@ impl Direction3D {
             2 => Some(Self::Z),
             _ => None,
         }
+    }
+    pub fn all() -> Vec<Self> {
+        vec![Self::X, Self::Y, Self::Z]
+    }
+    pub fn orthogonal_directions(&self) -> [Self; 2] {
+        let i = *self as usize;
+        [
+            Self::from_int((i + 1) % 3).expect("msg"),
+            Self::from_int((i + 2) % 3).expect("msg"),
+        ]
     }
 }

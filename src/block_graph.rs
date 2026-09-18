@@ -1,7 +1,7 @@
 use itertools::Itertools;
 use petgraph::{
-    Graph, Undirected,
-    graph::{EdgeIndex, NodeIndex, UnGraph},
+    Directed, Direction, Graph,
+    graph::{DiGraph, EdgeIndex, NodeIndex, UnGraph},
 };
 use std::{
     collections::HashMap,
@@ -11,17 +11,21 @@ use std::{
     str::FromStr,
 };
 
-use crate::positioned::PositionedZX;
 use crate::{
     correlation::CorrelationSurface,
     cube::{Cube, CubeKind, Pipe, Position3D, ZXCube},
     types::coord,
 };
+use crate::{cube::Direction3D, positioned::PositionedZX};
 
 #[derive(Clone, Debug)]
 pub struct BlockGraph {
     name: String,
-    graph: Graph<Cube, Pipe, Undirected>,
+    // In tqec the blockgraph structure is undirected, but the edge weights are pipes,
+    // which contain a to/from relationship (u, v)
+    // Here I'm electing to encode that information using the graph itself, so I don't have
+    // to store it in the pipe object.
+    graph: Graph<Cube, Pipe, Directed>,
     node_indices: HashMap<Position3D, NodeIndex>, // Used for client lookups
     edge_indices: HashMap<Pipe, EdgeIndex>,
     ports: HashMap<String, Position3D>, // TODO: how to add ports?
@@ -31,7 +35,7 @@ impl BlockGraph {
     pub fn new(name: String) -> Self {
         Self {
             name: name,
-            graph: UnGraph::default(),
+            graph: DiGraph::default(),
             node_indices: HashMap::new(),
             edge_indices: HashMap::new(),
             ports: HashMap::new(),
@@ -96,11 +100,16 @@ impl BlockGraph {
                         let cube1_id: &str = items[0];
                         let cube2_id: &str = items[1];
                         let kind = &items[2].to_uppercase(); // FIXME: ozx is an invalid kind.
+
+                        if !kind.contains("O") {
+                            return Err("Pipe must have an opening.".to_string());
+                        }
+
                         let cube1_idx = cubeIdToNodeIndex.get(cube1_id).unwrap();
                         let cube2_idx = cubeIdToNodeIndex.get(cube2_id).unwrap();
 
                         if to_return.graph.contains_edge(*cube1_idx, *cube2_idx) {
-                            // TODO: error
+                            return Err("Invalid".to_string());
                         }
 
                         let weight: Pipe = Pipe::from_str(kind)?;
@@ -145,10 +154,11 @@ impl BlockGraph {
         self.graph.edge_references().map(|e| e.weight()).collect()
     }
 
+    // TODO: since Pipe implents copy, we can pass by value. Apply this everywhere
     pub fn spanning_cubes_of(&self, pipe: &Pipe) -> (&Cube, &Cube) {
         let (idx1, idx2) = self
             .graph
-            .edge_endpoints(*self.edge_indices.get(pipe).unwrap())
+            .edge_endpoints(*self.edge_indices.get(&pipe).unwrap())
             .unwrap();
         let cube1 = self.graph.node_weight(idx1).unwrap();
         let cube2 = self.graph.node_weight(idx2).unwrap();
@@ -221,5 +231,115 @@ impl BlockGraph {
             *self.node_indices.get(&pos1).expect("pos1"),
             *self.node_indices.get(&pos2).expect("pos2"),
         );
+    }
+
+    pub fn validate(&self) -> Result<String, String> {
+        for cube in self.cubes() {
+            match self.validate_locally_at(cube) {
+                Err(msg) => {
+                    return Err(msg);
+                }
+                _ => {}
+            }
+        }
+        Ok("".to_string())
+    }
+
+    fn validate_locally_at(&self, cube: &Cube) -> Result<String, String> {
+        let pipes = self.pipes_at(&cube.position());
+        match cube.kind() {
+            CubeKind::PortCube => {
+                if pipes.len() != 1 {
+                    return Err("Port does not have exactly one pipe connected".to_string());
+                } else {
+                    return Ok("".to_string());
+                }
+            }
+            CubeKind::YHalfCube => {
+                if pipes.len() != 1 {
+                    return Err("YHalfCube does not have exactly one pipe connected".to_string());
+                } else if pipes.len() > 1 && pipes[0].direction() == Direction3D::Z {
+                    return Err("YHalfCube has non-timelike pipes connected".to_string());
+                } else {
+                    return Ok("".to_string());
+                }
+            }
+            CubeKind::ZX(zx_cube) => {
+                let mut pipes_by_direction: HashMap<Direction3D, Vec<Pipe>> = HashMap::new();
+                pipes.iter().for_each(|pipe| {
+                    pipes_by_direction
+                        .entry(pipe.direction())
+                        .and_modify(|v| v.push(*pipe))
+                        .or_default();
+                });
+                for direction in Direction3D::all() {
+                    match pipes_by_direction.get(&direction) {
+                        Some(v) => {
+                            if v.len() == 2 {
+                                continue;
+                            }
+                        }
+                        _ => {}
+                    }
+                    let cube_color = zx_cube.get_basis_along(direction);
+                    for ortho_dir in direction.orthogonal_directions() {
+                        match pipes_by_direction.get(&direction) {
+                            Some(_pipes) => {
+                                for pipe in _pipes {
+                                    let pipe_color = pipe.get_basis_along(
+                                        direction,
+                                        self.pipe_at_head(*pipe, cube.position())?,
+                                    )?;
+                                    if pipe_color != cube_color {
+                                        return Err("Cube has mismatched colors".to_string());
+                                    }
+                                }
+                            }
+                            None => {}
+                        }
+                    }
+                }
+                return Ok("".to_string());
+            }
+        }
+    }
+
+    // this is a method of Pipe in tqec-py, but my design choice was to store the pipe endpoints in the graph and not
+    // assign them to the pipe object itself, to have that as the source of truth.
+    // I haven't been punished for this design choice, yet.
+    fn pipe_at_head(&self, pipe: Pipe, position: Position3D) -> Result<bool, String> {
+        let (u, v) = self.spanning_cubes_of(&pipe);
+        if position == u.position() {
+            return Ok(true);
+        }
+        if position == v.position() {
+            return Ok(false);
+        }
+        Err("".to_string())
+    }
+
+    pub fn pipes_at(&self, pos: &Position3D) -> Vec<Pipe> {
+        let idx = self.node_indices.get(pos);
+        match idx {
+            Some(node_index) => {
+                let neighbors = self.graph.neighbors(*node_index);
+                neighbors
+                    .map(|node| {
+                        self.graph
+                            .edges_connecting(node, *node_index)
+                            .map(|e| *e.weight())
+                            .chain(
+                                self.graph
+                                    .edges_connecting(*node_index, node)
+                                    .map(|e| *e.weight()),
+                            )
+                    })
+                    .flatten()
+                    .collect::<Vec<Pipe>>()
+            }
+            None => {
+                todo!("error in fn BlockGraph::pipes_at")
+            }
+        }
     }
 }

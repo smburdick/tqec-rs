@@ -18,11 +18,22 @@ fn main() {
 }
 
 fn basic_all_test() {
-    for file in ["move_rotation", "three_cnots", "cz", "steane", "big_memory"] {
+    for file in [
+        "stability",
+        "move_rotation",
+        "cnot",
+        "three_cnots",
+        "cz",
+        "steane",
+    ] {
         let parse_res = BlockGraph::from_bgraph_file(format!("bgraphs/{}.bgraph", file));
         match parse_res {
             Ok(bg) => {
-                println!("{}", file);
+                println!("Validating {}", file);
+                let validation = bg.validate();
+                if validation.is_err() {
+                    println!("{}", validation.unwrap_err());
+                }
                 bg.find_correlation_surfaces()
                     .into_iter()
                     .for_each(|cs: CorrelationSurface| {
