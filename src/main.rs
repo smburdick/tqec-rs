@@ -7,6 +7,7 @@ mod abstract_observable;
 mod block_graph;
 mod correlation;
 mod cube;
+mod cube_spec;
 mod layout;
 mod pauli;
 mod positioned;

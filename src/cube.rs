@@ -270,6 +270,14 @@ impl Pipe {
         }
         Ok(head_basis)
     }
+
+    pub fn is_temporal(&self) -> bool {
+        self.z.is_none()
+    }
+
+    pub fn is_spatial(&self) -> bool {
+        !self.is_temporal()
+    }
 }
 
 #[repr(usize)]

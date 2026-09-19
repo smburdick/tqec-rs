@@ -11,7 +11,7 @@ use crate::{
 
 bitflags! {
     #[derive(Hash, PartialEq, Eq, Clone, Copy)]
-    struct SpatialArms: u8 {
+    pub struct SpatialArms: u8 {
         const NONE  = 0;
         const UP    = 1 << 0;
         const RIGHT = 1 << 1;
