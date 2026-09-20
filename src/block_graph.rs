@@ -50,24 +50,27 @@ impl BlockGraph {
         match file {
             Ok(goodfile) => {
                 let reader = BufReader::new(goodfile);
-                let mut parse_cubes = false;
-                let mut parse_pipes = false;
+                #[derive(PartialEq, Eq)]
+                enum ParseMode {
+                    HEADER,
+                    CUBES,
+                    PIPES,
+                }
+                let mut parse_mode: ParseMode = ParseMode::HEADER;
                 let mut cubeIdToNodeIndex: HashMap<String, NodeIndex> = HashMap::new();
-                for (_, line) in reader.lines().enumerate() {
-                    // TODO: skip header and metadata
+                for line in reader.lines() {
                     let _line = line.expect("Missing line");
                     if _line.len() == 1 || _line.is_empty() {
                         continue;
                     }
                     if _line.starts_with("CUBE") {
-                        parse_cubes = true; // start parsing cubes
+                        parse_mode = ParseMode::CUBES;
                         continue;
                     } else if _line.starts_with("PIPE") {
-                        parse_pipes = true; // start parsing pipes
-                        parse_cubes = false;
+                        parse_mode = ParseMode::PIPES;
                         continue;
                     }
-                    if parse_cubes {
+                    if parse_mode == ParseMode::CUBES {
                         let items: Vec<&str> = _line.split(";").collect();
 
                         let cube_id: &str = items[0];
@@ -95,7 +98,7 @@ impl BlockGraph {
                         let idx = to_return.graph.add_node(cube);
                         to_return.node_indices.insert(pos, idx);
                         cubeIdToNodeIndex.insert(cube_id.to_string(), idx);
-                    } else if parse_pipes {
+                    } else if parse_mode == ParseMode::PIPES {
                         let items: Vec<&str> = _line.split(";").collect();
                         let cube1_id: &str = items[0];
                         let cube2_id: &str = items[1];
