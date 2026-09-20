@@ -251,7 +251,7 @@ impl PositionedZX {
         let mut explored_leaves: Vec<V> = vec![leaf];
         let mut explored_nodes: HashSet<V> = HashSet::new();
         explored_nodes.insert(leaf);
-        let mut correlation_surface = correlation_surfaces.remove(0);
+        let mut correlation_surface = correlation_surfaces.get(0).unwrap();
 
         let pauli_value = |p: Pauli| p.value(); // used in sub functions.
         while frontier.len() > 0 {
@@ -281,15 +281,14 @@ impl PositionedZX {
             }
 
             let generating_set_sz: usize = boundary_nodes
-                .clone()
                 .iter()
                 .map(|n| map.get(&n).unwrap_or(&HashMap::new()).keys().len())
                 .sum();
 
             let unexplored_neighbors: Vec<V> = unconnected_neighbors
-                .clone()
-                .into_iter()
+                .iter()
                 .filter(|n| !map.contains_key(n))
+                .copied()
                 .collect();
 
             let passthrough_basis: Pauli =
@@ -298,20 +297,19 @@ impl PositionedZX {
 
             // check if each correlation surface candidate satisfies broadcast and passthrough rules
             // on the current node and is not a product of previously checked valid correlation surfaces
-
             let mut valid_surfaces: Vec<(HalfEdgeCorrelationSurface, Pauli, bool)> = Vec::new();
-            let mut invalid_surfaces: Vec<(HalfEdgeCorrelationSurface, usize)> = Vec::new();
+            let mut invalid_surfaces: Vec<(usize, usize)> = Vec::new();
 
             let mut vector_basis: HashMap<usize, (usize, usize)> = HashMap::new();
 
-            for cs in (std::iter::once(&correlation_surface)).chain(correlation_surfaces.iter()) {
+            for (k, cs) in correlation_surfaces.iter().enumerate() {
                 match cs.validate_node(
                     current_node,
                     passthrough_basis,
                     unconnected_neighbors.len() > 0,
                 ) {
                     ValidationResult::Single(u) => {
-                        invalid_surfaces.push((cs.clone(), u));
+                        invalid_surfaces.push((k, u));
                         continue;
                     }
                     ValidationResult::Pair(pauli, parity) => {
@@ -335,7 +333,7 @@ impl PositionedZX {
 
             // try to fix local constraint violations by XORing with other invalid surfaces
             let mut syndrome_basis: HashMap<usize, (usize, usize)> = HashMap::new();
-            let mut basis_surfaces: Vec<HalfEdgeCorrelationSurface> = Vec::new();
+            let mut basis_surfaces: Vec<usize> = Vec::new();
 
             for (cs, syndrome) in invalid_surfaces {
                 if vector_basis.len() == generating_set_sz {
@@ -348,7 +346,7 @@ impl PositionedZX {
 
                     if indices.is_err() {
                         if j == 1 {
-                            basis_surfaces.push(cs.clone());
+                            basis_surfaces.push(cs);
                         }
                         continue;
                     }
@@ -357,8 +355,8 @@ impl PositionedZX {
                         let input: Vec<&HalfEdgeCorrelationSurface> = indices
                             .unwrap()
                             .iter()
-                            .map(|k| basis_surfaces.get(*k as usize).unwrap())
-                            .chain(std::iter::once(&correlation_surface))
+                            .map(|k| correlation_surfaces.get(*basis_surfaces.get(*k as usize).unwrap()).unwrap())
+                            .chain(std::iter::once(correlation_surface))
                             .collect();
 
                         let new_correlation_surface = HalfEdgeCorrelationSurface::xor(input);
@@ -397,11 +395,11 @@ impl PositionedZX {
 
             correlation_surfaces = valid_surfaces
                 .iter()
-                .map(|tup| {
+                .map(|(cs, broadcast, parity)| {
                     expand_correlation_surface_to_node(
-                        &tup.0,
-                        tup.1,
-                        tup.2,
+                        cs,
+                        *broadcast,
+                        *parity,
                         current_node,
                         passthrough_basis,
                         &unconnected_neighbors,
@@ -417,7 +415,7 @@ impl PositionedZX {
                 return correlation_surfaces;
             }
 
-            correlation_surface = correlation_surfaces.remove(0);
+            correlation_surface = correlation_surfaces.get(0).unwrap();
 
             unexplored_neighbors
                 .iter()
@@ -432,9 +430,8 @@ impl PositionedZX {
             explored_nodes.insert(current_node);
         }
 
-        if correlation_surface.mapping.len() > 0 {
-            // check if filled w/ meaningful value
-            correlation_surfaces.push(correlation_surface);
+        if correlation_surface.mapping.len() == 0 {
+            correlation_surfaces.remove(0);
         }
 
         return reform_correlation_surface_generators(

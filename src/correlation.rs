@@ -473,7 +473,7 @@ pub fn expand_correlation_surface_to_node(
     passthrough_parity: bool,
     node: V,
     node_basis: Pauli,
-    unconnected_neighbors: &Vec<V>,
+    unconnected_neighbors: &Vec<V>, // TODO: combine unconnected_neighbors + edges_are_hadamard into single structure.
     edges_are_hadamard: &Vec<bool>,
     generate_all: bool,
     always_copy: bool,
