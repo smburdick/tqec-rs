@@ -4,12 +4,7 @@ use quizx::{
 };
 
 use crate::{
-    block_graph::BlockGraph,
-    cube::{Basis, Position3D},
-    pauli::Pauli,
-    positioned::PositionedZX,
-    types::coord,
-    utils::{concat_ints_as_bits, int_to_bit_indices, solve_linear_system, zx_to_pauli},
+    block_graph::BlockGraph, cube::{Basis, Position3D}, pauli::Pauli, positioned::{PositionedZX, SharedSurface}, types::coord, utils::{concat_ints_as_bits, int_to_bit_indices, solve_linear_system, zx_to_pauli},
 };
 use core::fmt;
 use itertools::Itertools;
@@ -474,7 +469,7 @@ pub fn generate_valid_local_paulis(
 }
 
 pub fn expand_correlation_surface_to_node(
-    correlation_surface: Rc<RefCell<HalfEdgeCorrelationSurface>>,
+    correlation_surface: SharedSurface,
     broadcast_pauli: Pauli,
     passthrough_parity: bool,
     node: V,
@@ -483,7 +478,7 @@ pub fn expand_correlation_surface_to_node(
     edges_are_hadamard: Vec<bool>,
     generate_all: bool,
     always_copy: bool,
-) -> impl Iterator<Item = Rc<RefCell<HalfEdgeCorrelationSurface>>> {
+) -> impl Iterator<Item = SharedSurface> {
     generate_valid_local_paulis(
         node_basis,
         broadcast_pauli,

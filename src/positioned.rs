@@ -25,7 +25,7 @@ pub struct PositionedZX {
     positions: HashMap<V, Cube>, // V is alias of usize
 }
 
-type SharedSurface = Rc<RefCell<HalfEdgeCorrelationSurface>>;
+pub type SharedSurface = Rc<RefCell<HalfEdgeCorrelationSurface>>;
 
 impl PositionedZX {
     pub fn from_block_graph(block_graph: &BlockGraph) -> Self {
@@ -253,9 +253,8 @@ impl PositionedZX {
         let mut explored_nodes: HashSet<V> = HashSet::new();
         explored_nodes.insert(leaf);
 
-                   // These vectors gain ownership of the surfaces
+        // These vectors gain ownership of the surfaces
         let mut vector_basis: HashMap<usize, (usize, usize)> = HashMap::new();
-
         let mut syndrome_basis: HashMap<usize, (usize, usize)> = HashMap::new();
         let mut basis_surfaces: Vec<SharedSurface> = Vec::new();
 
