@@ -474,7 +474,7 @@ pub fn generate_valid_local_paulis(
 }
 
 pub fn expand_correlation_surface_to_node(
-    correlation_surface: HalfEdgeCorrelationSurface,
+    correlation_surface: Rc<RefCell<HalfEdgeCorrelationSurface>>,
     broadcast_pauli: Pauli,
     passthrough_parity: bool,
     node: V,
@@ -483,7 +483,7 @@ pub fn expand_correlation_surface_to_node(
     edges_are_hadamard: Vec<bool>,
     generate_all: bool,
     always_copy: bool,
-) -> impl Iterator<Item = HalfEdgeCorrelationSurface> {
+) -> impl Iterator<Item = Rc<RefCell<HalfEdgeCorrelationSurface>>> {
     generate_valid_local_paulis(
         node_basis,
         broadcast_pauli,
@@ -492,15 +492,29 @@ pub fn expand_correlation_surface_to_node(
         generate_all,
     )
     .into_iter()
-    .map(move |out_paulis|
+    .enumerate()
+    .map(move |(i, out_paulis)|
     {
-        let mut new_correlation_surface = correlation_surface.clone();
-        for ((n, pauli), edge_is_hadamard) in unconnected_neighbors
-            .iter()
-            .zip(out_paulis.iter())
-            .zip(edges_are_hadamard.iter())
+        let new_correlation_surface = if i == 0 && !always_copy {
+            // Python's:
+            // new_correlation_surface = correlation_surface
+            Rc::clone(&correlation_surface)
+        } else {
+            // Python's:
+            // new_correlation_surface = copy(correlation_surface)
+            Rc::new(RefCell::new(
+                correlation_surface.borrow().clone()
+            ))
+        };
         {
-            new_correlation_surface.add_pauli_to_edge((node, *n), *pauli, *edge_is_hadamard);
+            let mut surface = new_correlation_surface.borrow_mut();
+            for ((n, pauli), edge_is_hadamard) in unconnected_neighbors
+                .iter()
+                .zip(out_paulis.iter())
+                .zip(edges_are_hadamard.iter())
+            {
+                surface.add_pauli_to_edge((node, *n), *pauli, *edge_is_hadamard);
+            }
         }
         new_correlation_surface
     })

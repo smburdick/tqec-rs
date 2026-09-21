@@ -1,4 +1,4 @@
-use std::{collections::{HashMap, HashSet}, iter::{Peekable, once}};
+use std::{cell::RefCell, collections::{HashMap, HashSet}, iter::{Peekable, once}, rc::Rc};
 
 use itertools::Itertools;
 use quizx::{
@@ -24,6 +24,8 @@ pub struct PositionedZX {
     graph: Graph,
     positions: HashMap<V, Cube>, // V is alias of usize
 }
+
+type SharedSurface = Rc<RefCell<HalfEdgeCorrelationSurface>>;
 
 impl PositionedZX {
     pub fn from_block_graph(block_graph: &BlockGraph) -> Self {
@@ -230,7 +232,7 @@ impl PositionedZX {
         let neighbor = graph.neighbors(leaf).next().unwrap();
         // correlation_surfaces owns the data of each surface so the rest have to be borrowed via references
         // other vectors used here are temporary.
-        let mut correlation_surfaces: Box<dyn Iterator<Item = HalfEdgeCorrelationSurface>> = Box::new([Pauli::X, Pauli::Z]
+        let mut correlation_surfaces: Box<dyn Iterator<Item = SharedSurface>> = Box::new([Pauli::X, Pauli::Z]
             .into_iter()
             .map(|pauli: Pauli| {
                 let mut cs: HalfEdgeCorrelationSurface = HalfEdgeCorrelationSurface::new();
@@ -239,11 +241,11 @@ impl PositionedZX {
                     pauli,
                     Self::is_hadamard(graph, (leaf, neighbor)),
                 );
-                cs
+                Rc::new(RefCell::new(cs))
             }));
 
         if graph.degree(neighbor) == 1 {
-            return correlation_surfaces.collect();
+            return correlation_surfaces.map(|cs| cs.borrow().clone()).collect();
         }
 
         let mut frontier: Vec<V> = vec![neighbor];
@@ -261,7 +263,7 @@ impl PositionedZX {
             let correlation_surface = _correlation_surface.unwrap();
 
             let current_node = frontier.remove(0);
-            let map = &correlation_surface.mapping;//.clone();
+            let map = &correlation_surface.borrow().mapping;
 
             let connected_neighbors: Vec<V> = map
                 .get(&current_node)
@@ -304,31 +306,30 @@ impl PositionedZX {
             // on the current node and is not a product of previously checked valid correlation surfaces
 
             // These vectors gain ownership of the surfaces
-            let mut valid_surfaces: Vec<(HalfEdgeCorrelationSurface, Pauli, bool)> = Vec::new();
-            let mut invalid_surfaces: Vec<(HalfEdgeCorrelationSurface, usize)> = Vec::new();
+            let mut valid_surfaces: Vec<(SharedSurface, Pauli, bool)> = Vec::new();
+            let mut invalid_surfaces: Vec<(SharedSurface, usize)> = Vec::new();
 
             let mut vector_basis: HashMap<usize, (usize, usize)> = HashMap::new();
-            let mut _one_cs= once(correlation_surface.clone());
 
-            for cs in _one_cs.chain(correlation_surfaces) {
-                match cs.validate_node(
+            for cs in once(Rc::clone(&correlation_surface)).chain(correlation_surfaces) {
+                match cs.borrow().validate_node(
                     current_node,
                     passthrough_basis,
                     unconnected_neighbors.len() > 0,
                 ) {
                     ValidationResult::Single(u) => {
-                        invalid_surfaces.push((cs, u));
+                        invalid_surfaces.push((Rc::clone(&cs), u));
                         continue;
                     }
                     ValidationResult::Pair(pauli, parity) => {
-                        let x = cs.signature_at_nodes(
+                        let x = cs.borrow().signature_at_nodes(
                             boundary_nodes.clone().into_iter(),
                             pauli_value,
                             2,
                         );
 
                         if solve_linear_system(&mut vector_basis, x, true).is_err() {
-                            valid_surfaces.push((cs, pauli, parity));
+                            valid_surfaces.push((Rc::clone(&cs), pauli, parity));
 
                             if vector_basis.len() == generating_set_sz {
                                 break;
@@ -341,7 +342,7 @@ impl PositionedZX {
 
             // try to fix local constraint violations by XORing with other invalid surfaces
             let mut syndrome_basis: HashMap<usize, (usize, usize)> = HashMap::new();
-            let mut basis_surfaces: Vec<HalfEdgeCorrelationSurface> = Vec::new();
+            let mut basis_surfaces: Vec<SharedSurface> = Vec::new();
 
             for (cs, syndrome) in invalid_surfaces {
                 if vector_basis.len() == generating_set_sz {
@@ -361,12 +362,14 @@ impl PositionedZX {
 
                     if indices.is_ok() {
 
-                        let input = indices
+                        let borrowed: Vec<_> = indices
                             .unwrap()
                             .iter()
-                            .map(|k| basis_surfaces.get(*k).unwrap())
-                            .chain(once(&correlation_surface))
+                            .map(|k| basis_surfaces.get(*k).unwrap().borrow())
+                            .chain(once(correlation_surface.borrow()))
                             .collect();
+
+                        let input = borrowed.iter().map(|r| &**r).collect();
 
                         let new_correlation_surface = HalfEdgeCorrelationSurface::xor(input);
 
@@ -387,7 +390,7 @@ impl PositionedZX {
                                 unconnected_neighbors.len() > 0,
                             ) {
                                 ValidationResult::Pair(pauli, parity) => {
-                                    valid_surfaces.push((new_correlation_surface, pauli, parity));
+                                    valid_surfaces.push((Rc::new(RefCell::new(new_correlation_surface)), pauli, parity));
                                 }
                                 _ => {}
                             }
@@ -435,7 +438,7 @@ impl PositionedZX {
         }
 
         return reform_correlation_surface_generators(
-            correlation_surfaces,
+            correlation_surfaces.map(|cs| cs.borrow().clone()),
             |cs| {
                 cs.signature_at_nodes(
                     graph.vertices().filter(|v| graph.degree(*v) == 1),
