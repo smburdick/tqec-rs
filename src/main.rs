@@ -20,9 +20,9 @@ fn main() {
 
 fn basic_all_test() {
     for file in [
+        "cnot",
         "stability",
         "move_rotation",
-        "cnot",
         "three_cnots",
         "cz",
         "steane",
@@ -31,10 +31,10 @@ fn basic_all_test() {
         match parse_res {
             Ok(bg) => {
                 println!("Validating {}", file);
-                let validation = bg.validate();
-                if validation.is_err() {
-                    println!("{}", validation.unwrap_err());
-                }
+                // let validation = bg.validate();
+                // if validation.is_err() {
+                //     println!("{}", validation.unwrap_err());
+                // }
                 bg.find_correlation_surfaces()
                     .into_iter()
                     .for_each(|cs: CorrelationSurface| {

@@ -14,8 +14,7 @@ use crate::{
 use core::fmt;
 use itertools::Itertools;
 use std::{
-    collections::{HashMap, HashSet},
-    iter::{self, repeat},
+    collections::{HashMap, HashSet}, iter::{self, once, repeat},
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, PartialOrd)]
@@ -468,26 +467,25 @@ pub fn generate_valid_local_paulis(
 }
 
 pub fn expand_correlation_surface_to_node(
-    correlation_surface: &HalfEdgeCorrelationSurface,
+    correlation_surface: HalfEdgeCorrelationSurface,
     broadcast_pauli: Pauli,
     passthrough_parity: bool,
     node: V,
     node_basis: Pauli,
-    unconnected_neighbors: &Vec<V>, // TODO: combine unconnected_neighbors + edges_are_hadamard into single structure.
-    edges_are_hadamard: &Vec<bool>,
+    unconnected_neighbors: Vec<V>, // TODO: combine unconnected_neighbors + edges_are_hadamard into single structure.
+    edges_are_hadamard: Vec<bool>,
     generate_all: bool,
     always_copy: bool,
-) -> Vec<HalfEdgeCorrelationSurface> {
-    // TODO: python version uses generator instead, consider using that.
-    let mut new_correlation_surfaces: Vec<HalfEdgeCorrelationSurface> = Vec::new();
-    for out_paulis in generate_valid_local_paulis(
+) -> impl Iterator<Item = HalfEdgeCorrelationSurface> {
+    generate_valid_local_paulis(
         node_basis,
         broadcast_pauli,
         passthrough_parity,
         unconnected_neighbors.len(),
         generate_all,
     )
-    .iter()
+    .into_iter()
+    .map(move |out_paulis|
     {
         let mut new_correlation_surface = correlation_surface.clone();
         for ((n, pauli), edge_is_hadamard) in unconnected_neighbors
@@ -497,13 +495,13 @@ pub fn expand_correlation_surface_to_node(
         {
             new_correlation_surface.add_pauli_to_edge((node, *n), *pauli, *edge_is_hadamard);
         }
-        new_correlation_surfaces.push(new_correlation_surface);
-    }
-    new_correlation_surfaces
+        new_correlation_surface
+    })
+
 }
 
 pub fn reform_correlation_surface_generators<F>(
-    correlation_surfaces: Vec<&HalfEdgeCorrelationSurface>,
+    correlation_surfaces: impl Iterator<Item = HalfEdgeCorrelationSurface>,
     signature_func: F,
     stabilizer_basis: &mut HashMap<usize, (usize, usize)>,
     basis_surfaces: Vec<&HalfEdgeCorrelationSurface>,
@@ -522,10 +520,10 @@ where
 
     let mut new_surfaces: Vec<HalfEdgeCorrelationSurface> = Vec::new();
     for cs in correlation_surfaces {
-        let x = signature_func(cs);
+        let x = signature_func(&cs);
         let indices = solve_linear_system(stabilizer_basis, x, true);
         if indices.is_err() {
-            new_basis_surfaces.push(cs.clone());
+            new_basis_surfaces.push(cs);
             if num_basis_surfaces_needed > 0 && basis_surfaces.len() > num_basis_surfaces_needed {
                 break;
             }
@@ -536,7 +534,7 @@ where
                 .unwrap()
                 .iter()
                 .map(|k| &new_basis_surfaces[*k])
-                .chain(std::iter::once(cs))
+                .chain(once(&cs))
                 .collect();
             let _new_cs = HalfEdgeCorrelationSurface::xor(_bscs);
             new_surfaces.push(_new_cs);
@@ -587,7 +585,7 @@ pub fn find_correlation_surfaces_from_leaf(
             )
         };
         correlation_surfaces = reform_correlation_surface_generators(
-            correlation_surfaces.iter().collect(),
+            correlation_surfaces.into_iter(),
             sigfunc,
             &mut HashMap::new(),
             Vec::new(),
