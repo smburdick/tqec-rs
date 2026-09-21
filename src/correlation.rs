@@ -14,7 +14,7 @@ use crate::{
 use core::fmt;
 use itertools::Itertools;
 use std::{
-    collections::{HashMap, HashSet}, iter::{self, once, repeat},
+    cell::RefCell, collections::{HashMap, HashSet}, iter::{self, once, repeat}, rc::Rc,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, PartialOrd)]
@@ -245,7 +245,7 @@ impl fmt::Display for CorrelationSurface {
 
 #[derive(Clone, Debug)]
 pub struct HalfEdgeCorrelationSurface {
-    pub mapping: HashMap<V, HashMap<V, Pauli>>,
+    pub mapping: HashMap<V, Rc<HashMap<V, Pauli>>>,
 }
 
 pub enum ValidationResult {
@@ -268,7 +268,11 @@ impl HalfEdgeCorrelationSurface {
     pub fn add_pauli_to_edge(&mut self, edge: (V, V), pauli: Pauli, edge_is_hadamard: bool) {
         let (u, v) = edge;
         for (from, to, p) in [(u, v, pauli), (v, u, pauli.flipped(edge_is_hadamard))] {
-            self.mapping.entry(from).or_default().insert(to, p);
+            let inner = self
+                .mapping
+                .entry(from)
+                .or_insert_with(|| Rc::new(HashMap::new()));
+            Rc::make_mut(inner).insert(to, p);
         }
     }
 
@@ -328,9 +332,12 @@ impl HalfEdgeCorrelationSurface {
                     .get(&v)
                     .expect(&format!("Missing mapping for vertex {}", v))
                     .values()
+                    .copied()
+                    .collect::<Vec<_>>()
+                    .into_iter()
             })
             .flatten()
-            .map(|&p| p)
+
     }
 
     pub fn signature_at_nodes<F>(
@@ -357,7 +364,7 @@ impl HalfEdgeCorrelationSurface {
         for (v, neighbors) in &first.mapping {
             let mut val = HashMap::new();
 
-            for (n, pauli) in neighbors {
+            for (n, pauli) in neighbors.iter() {
                 let mut res_pauli = pauli.clone();
 
                 for cs in others {
@@ -369,7 +376,7 @@ impl HalfEdgeCorrelationSurface {
                 }
                 val.insert(*n, res_pauli);
             }
-            result.mapping.insert(*v, val);
+            result.mapping.insert(*v, Rc::new(val));
         }
         result
     }
@@ -497,7 +504,6 @@ pub fn expand_correlation_surface_to_node(
         }
         new_correlation_surface
     })
-
 }
 
 pub fn reform_correlation_surface_generators<F>(

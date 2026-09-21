@@ -287,7 +287,7 @@ impl PositionedZX {
 
             let generating_set_sz: usize = boundary_nodes
                 .iter()
-                .map(|n| map.get(&n).unwrap_or(&HashMap::new()).keys().len())
+                .map(|n|  map.get(&n).map_or(0, |inner| inner.len()))
                 .sum();
 
             let unexplored_neighbors: Vec<V> = unconnected_neighbors
