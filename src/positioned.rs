@@ -261,7 +261,7 @@ impl PositionedZX {
             let correlation_surface = _correlation_surface.unwrap();
 
             let current_node = frontier.remove(0);
-            let map = correlation_surface.mapping.clone();
+            let map = &correlation_surface.mapping;//.clone();
 
             let connected_neighbors: Vec<V> = map
                 .get(&current_node)
@@ -302,7 +302,8 @@ impl PositionedZX {
 
             // check if each correlation surface candidate satisfies broadcast and passthrough rules
             // on the current node and is not a product of previously checked valid correlation surfaces
-            // TODO: these vectors can own the surfaces.
+
+            // These vectors gain ownership of the surfaces
             let mut valid_surfaces: Vec<(HalfEdgeCorrelationSurface, Pauli, bool)> = Vec::new();
             let mut invalid_surfaces: Vec<(HalfEdgeCorrelationSurface, usize)> = Vec::new();
 
@@ -430,10 +431,6 @@ impl PositionedZX {
                 .for_each(|n| explored_leaves.push(*n));
 
             explored_nodes.insert(current_node);
-
-            // if frontier.len() == 0 && map.len() > 0 { // end of the loop
-            //     correlation_surfaces = Box::new(correlation_surfaces.chain(once(correlation_surface)));
-            // }
 
         }
 
