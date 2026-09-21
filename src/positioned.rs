@@ -253,6 +253,13 @@ impl PositionedZX {
         let mut explored_nodes: HashSet<V> = HashSet::new();
         explored_nodes.insert(leaf);
 
+                   // These vectors gain ownership of the surfaces
+        let mut vector_basis: HashMap<usize, (usize, usize)> = HashMap::new();
+
+        let mut syndrome_basis: HashMap<usize, (usize, usize)> = HashMap::new();
+        let mut basis_surfaces: Vec<SharedSurface> = Vec::new();
+
+
         let pauli_value = |p: Pauli| p.value(); // used in sub functions.
         while frontier.len() > 0 {
 
@@ -305,11 +312,9 @@ impl PositionedZX {
             // check if each correlation surface candidate satisfies broadcast and passthrough rules
             // on the current node and is not a product of previously checked valid correlation surfaces
 
-            // These vectors gain ownership of the surfaces
-            let mut valid_surfaces: Vec<(SharedSurface, Pauli, bool)> = Vec::new();
             let mut invalid_surfaces: Vec<(SharedSurface, usize)> = Vec::new();
+            let mut valid_surfaces: Vec<(SharedSurface, Pauli, bool)> = Vec::new();
 
-            let mut vector_basis: HashMap<usize, (usize, usize)> = HashMap::new();
 
             for cs in once(Rc::clone(&correlation_surface)).chain(correlation_surfaces) {
                 match cs.borrow().validate_node(
@@ -341,8 +346,6 @@ impl PositionedZX {
             }
 
             // try to fix local constraint violations by XORing with other invalid surfaces
-            let mut syndrome_basis: HashMap<usize, (usize, usize)> = HashMap::new();
-            let mut basis_surfaces: Vec<SharedSurface> = Vec::new();
 
             for (cs, syndrome) in invalid_surfaces {
                 if vector_basis.len() == generating_set_sz {
@@ -434,6 +437,10 @@ impl PositionedZX {
                 .for_each(|n| explored_leaves.push(*n));
 
             explored_nodes.insert(current_node);
+
+            vector_basis.clear();
+            syndrome_basis.clear();
+            basis_surfaces.clear();
 
         }
 
