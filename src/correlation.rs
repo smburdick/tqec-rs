@@ -4,12 +4,20 @@ use quizx::{
 };
 
 use crate::{
-    block_graph::BlockGraph, cube::{Basis, Position3D}, pauli::Pauli, positioned::{PositionedZX, SharedSurface}, types::coord, utils::{concat_ints_as_bits, int_to_bit_indices, solve_linear_system, zx_to_pauli},
+    block_graph::BlockGraph,
+    cube::{Basis, Position3D},
+    pauli::Pauli,
+    positioned::{PositionedZX, SharedSurface},
+    types::coord,
+    utils::{concat_ints_as_bits, int_to_bit_indices, solve_linear_system, zx_to_pauli},
 };
 use core::fmt;
 use itertools::Itertools;
 use std::{
-    cell::RefCell, collections::{HashMap, HashSet}, iter::{self, once, repeat}, rc::Rc,
+    cell::RefCell,
+    collections::{HashMap, HashSet},
+    iter::{self, once, repeat},
+    rc::Rc,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, PartialOrd)]
@@ -239,7 +247,7 @@ impl fmt::Display for CorrelationSurface {
 }
 
 #[derive(Clone, Debug)]
-pub struct HalfEdgeCorrelationSurface {
+pub struct CorrelationSurfaceGenerator {
     pub mapping: HashMap<V, Rc<HashMap<V, Pauli>>>,
 }
 
@@ -249,7 +257,7 @@ pub enum ValidationResult {
     Pair(Pauli, bool),
 }
 
-impl HalfEdgeCorrelationSurface {
+impl CorrelationSurfaceGenerator {
     pub fn new() -> Self {
         Self {
             mapping: HashMap::new(),
@@ -332,7 +340,6 @@ impl HalfEdgeCorrelationSurface {
                     .into_iter()
             })
             .flatten()
-
     }
 
     pub fn signature_at_nodes<F>(
@@ -488,8 +495,7 @@ pub fn expand_correlation_surface_to_node(
     )
     .into_iter()
     .enumerate()
-    .map(move |(i, out_paulis)|
-    {
+    .map(move |(i, out_paulis)| {
         let new_correlation_surface = if i == 0 && !always_copy {
             // Python's:
             // new_correlation_surface = correlation_surface
@@ -497,9 +503,7 @@ pub fn expand_correlation_surface_to_node(
         } else {
             // Python's:
             // new_correlation_surface = copy(correlation_surface)
-            Rc::new(RefCell::new(
-                correlation_surface.borrow().clone()
-            ))
+            Rc::new(RefCell::new(correlation_surface.borrow().clone()))
         };
         {
             let mut surface = new_correlation_surface.borrow_mut();
@@ -516,24 +520,24 @@ pub fn expand_correlation_surface_to_node(
 }
 
 pub fn reform_correlation_surface_generators<F>(
-    correlation_surfaces: impl Iterator<Item = HalfEdgeCorrelationSurface>,
+    correlation_surfaces: impl Iterator<Item = CorrelationSurfaceGenerator>,
     signature_func: F,
     stabilizer_basis: &mut HashMap<usize, (usize, usize)>,
-    basis_surfaces: Vec<&HalfEdgeCorrelationSurface>,
+    basis_surfaces: Vec<&CorrelationSurfaceGenerator>,
     construct_new_surfaces: bool,     // = True,
     num_new_surfaces_needed: usize,   // | None = None,
     num_basis_surfaces_needed: usize, //int | None = None,
 ) -> (
-    Vec<HalfEdgeCorrelationSurface>,
-    Vec<HalfEdgeCorrelationSurface>,
+    Vec<CorrelationSurfaceGenerator>,
+    Vec<CorrelationSurfaceGenerator>,
 )
 where
-    F: Fn(&HalfEdgeCorrelationSurface) -> usize,
+    F: Fn(&CorrelationSurfaceGenerator) -> usize,
 {
-    let mut new_basis_surfaces: Vec<HalfEdgeCorrelationSurface> =
+    let mut new_basis_surfaces: Vec<CorrelationSurfaceGenerator> =
         basis_surfaces.iter().map(|cs| (*cs).clone()).collect();
 
-    let mut new_surfaces: Vec<HalfEdgeCorrelationSurface> = Vec::new();
+    let mut new_surfaces: Vec<CorrelationSurfaceGenerator> = Vec::new();
     for cs in correlation_surfaces {
         let x = signature_func(&cs);
         let indices = solve_linear_system(stabilizer_basis, x, true);
@@ -551,7 +555,7 @@ where
                 .map(|k| &new_basis_surfaces[*k])
                 .chain(once(&cs))
                 .collect();
-            let _new_cs = HalfEdgeCorrelationSurface::xor(_bscs);
+            let _new_cs = CorrelationSurfaceGenerator::xor(_bscs);
             new_surfaces.push(_new_cs);
             if num_new_surfaces_needed > 0 && new_surfaces.len() >= num_new_surfaces_needed {
                 break;
@@ -564,7 +568,7 @@ where
 pub fn find_correlation_surfaces_from_leaf(
     zx_graph: &Graph,
     leaf: V,
-) -> Vec<HalfEdgeCorrelationSurface> {
+) -> Vec<CorrelationSurfaceGenerator> {
     let mut correlation_surfaces =
         PositionedZX::find_correlation_surface_generating_set_from_leaf(zx_graph, leaf);
 
@@ -587,7 +591,7 @@ pub fn find_correlation_surfaces_from_leaf(
     leaves.remove_entry(&Pauli::I);
 
     if leaves.values().map(|m| m.len()).sum::<usize>() > 0 {
-        let sigfunc = |cs: &HalfEdgeCorrelationSurface| {
+        let sigfunc = |cs: &CorrelationSurfaceGenerator| {
             concat_ints_as_bits(
                 leaves.iter().map(|(pauli, _leaves)| {
                     cs.signature_at_nodes(
@@ -616,7 +620,7 @@ pub fn find_correlation_surfaces_from_leaf(
         construct_basis(
             &mut basis,
             &correlation_surfaces,
-            |cs: &HalfEdgeCorrelationSurface| {
+            |cs: &CorrelationSurfaceGenerator| {
                 cs.signature_at_nodes(open_leaves.iter().map(|l| *l), |p: Pauli| p.value(), 2)
             },
         );
@@ -626,7 +630,7 @@ pub fn find_correlation_surfaces_from_leaf(
             .map(|(_, mask)| {
                 let indices = int_to_bit_indices(*mask);
                 if indices.len() > 1 {
-                    HalfEdgeCorrelationSurface::xor(
+                    CorrelationSurfaceGenerator::xor(
                         indices
                             .iter()
                             .map(|i| correlation_surfaces.get(*i).expect("msg"))
@@ -647,10 +651,10 @@ pub fn find_correlation_surfaces_from_leaf(
 
 pub fn construct_basis<F>(
     basis: &mut HashMap<usize, (usize, usize)>,
-    correlation_surfaces: &Vec<HalfEdgeCorrelationSurface>,
+    correlation_surfaces: &Vec<CorrelationSurfaceGenerator>,
     func: F,
 ) where
-    F: Fn(&HalfEdgeCorrelationSurface) -> usize,
+    F: Fn(&CorrelationSurfaceGenerator) -> usize,
 {
     correlation_surfaces.iter().for_each(|cs| {
         solve_linear_system(basis, func(cs), true);

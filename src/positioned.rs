@@ -1,4 +1,9 @@
-use std::{cell::RefCell, collections::{HashMap, HashSet}, iter::{Peekable, once}, rc::Rc};
+use std::{
+    cell::RefCell,
+    collections::{HashMap, HashSet},
+    iter::{Peekable, once},
+    rc::Rc,
+};
 
 use itertools::Itertools;
 use quizx::{
@@ -10,7 +15,7 @@ use quizx::{
 use crate::{
     block_graph::BlockGraph,
     correlation::{
-        CorrelationSurface, HalfEdgeCorrelationSurface, ValidationResult, ZXEdge, ZXNode,
+        CorrelationSurface, CorrelationSurfaceGenerator, ValidationResult, ZXEdge, ZXNode,
         expand_correlation_surface_to_node, find_correlation_surfaces_from_leaf,
         reform_correlation_surface_generators,
     },
@@ -25,7 +30,7 @@ pub struct PositionedZX {
     positions: HashMap<V, Cube>, // V is alias of usize
 }
 
-pub type SharedSurface = Rc<RefCell<HalfEdgeCorrelationSurface>>;
+pub type SharedSurface = Rc<RefCell<CorrelationSurfaceGenerator>>;
 
 impl PositionedZX {
     pub fn from_block_graph(block_graph: &BlockGraph) -> Self {
@@ -228,14 +233,13 @@ impl PositionedZX {
     pub fn find_correlation_surface_generating_set_from_leaf(
         graph: &Graph,
         leaf: V,
-    ) -> Vec<HalfEdgeCorrelationSurface> {
+    ) -> Vec<CorrelationSurfaceGenerator> {
         let neighbor = graph.neighbors(leaf).next().unwrap();
         // correlation_surfaces owns the data of each surface so the rest have to be borrowed via references
         // other vectors used here are temporary.
-        let mut correlation_surfaces: Box<dyn Iterator<Item = SharedSurface>> = Box::new([Pauli::X, Pauli::Z]
-            .into_iter()
-            .map(|pauli: Pauli| {
-                let mut cs: HalfEdgeCorrelationSurface = HalfEdgeCorrelationSurface::new();
+        let mut correlation_surfaces: Box<dyn Iterator<Item = SharedSurface>> =
+            Box::new([Pauli::X, Pauli::Z].into_iter().map(|pauli: Pauli| {
+                let mut cs: CorrelationSurfaceGenerator = CorrelationSurfaceGenerator::new();
                 cs.add_pauli_to_edge(
                     (leaf, neighbor),
                     pauli,
@@ -258,10 +262,8 @@ impl PositionedZX {
         let mut syndrome_basis: HashMap<usize, (usize, usize)> = HashMap::new();
         let mut basis_surfaces: Vec<SharedSurface> = Vec::new();
 
-
         let pauli_value = |p: Pauli| p.value(); // used in sub functions.
         while frontier.len() > 0 {
-
             let _correlation_surface = correlation_surfaces.next();
             if _correlation_surface.is_none() {
                 return Vec::new();
@@ -295,7 +297,7 @@ impl PositionedZX {
 
             let generating_set_sz: usize = boundary_nodes
                 .iter()
-                .map(|n|  map.get(&n).map_or(0, |inner| inner.len()))
+                .map(|n| map.get(&n).map_or(0, |inner| inner.len()))
                 .sum();
 
             let unexplored_neighbors: Vec<V> = unconnected_neighbors
@@ -313,7 +315,6 @@ impl PositionedZX {
 
             let mut invalid_surfaces: Vec<(SharedSurface, usize)> = Vec::new();
             let mut valid_surfaces: Vec<(SharedSurface, Pauli, bool)> = Vec::new();
-
 
             for cs in once(Rc::clone(&correlation_surface)).chain(correlation_surfaces) {
                 match cs.borrow().validate_node(
@@ -363,7 +364,6 @@ impl PositionedZX {
                     }
 
                     if indices.is_ok() {
-
                         let borrowed: Vec<_> = indices
                             .unwrap()
                             .iter()
@@ -373,7 +373,7 @@ impl PositionedZX {
 
                         let input = borrowed.iter().map(|r| &**r).collect();
 
-                        let new_correlation_surface = HalfEdgeCorrelationSurface::xor(input);
+                        let new_correlation_surface = CorrelationSurfaceGenerator::xor(input);
 
                         if solve_linear_system(
                             &mut vector_basis,
@@ -392,7 +392,11 @@ impl PositionedZX {
                                 unconnected_neighbors.len() > 0,
                             ) {
                                 ValidationResult::Pair(pauli, parity) => {
-                                    valid_surfaces.push((Rc::new(RefCell::new(new_correlation_surface)), pauli, parity));
+                                    valid_surfaces.push((
+                                        Rc::new(RefCell::new(new_correlation_surface)),
+                                        pauli,
+                                        parity,
+                                    ));
                                 }
                                 _ => {}
                             }
@@ -407,23 +411,24 @@ impl PositionedZX {
                 .map(|n| Self::is_hadamard(graph, (current_node, *n)))
                 .collect();
 
-            correlation_surfaces = Box::new(valid_surfaces
-                .into_iter()
-                .map(move |(cs, broadcast, parity)| {
-                    expand_correlation_surface_to_node(
-                        cs,
-                        broadcast,
-                        parity,
-                        current_node,
-                        passthrough_basis,
-                        unconnected_neighbors.clone(),
-                        edges_are_hadamard.clone(),
-                        true,
-                        false,
-                    )
-                })
-                .flatten());
-
+            correlation_surfaces = Box::new(
+                valid_surfaces
+                    .into_iter()
+                    .map(move |(cs, broadcast, parity)| {
+                        expand_correlation_surface_to_node(
+                            cs,
+                            broadcast,
+                            parity,
+                            current_node,
+                            passthrough_basis,
+                            unconnected_neighbors.clone(),
+                            edges_are_hadamard.clone(),
+                            true,
+                            false,
+                        )
+                    })
+                    .flatten(),
+            );
 
             unexplored_neighbors
                 .iter()
@@ -440,7 +445,6 @@ impl PositionedZX {
             vector_basis.clear();
             syndrome_basis.clear();
             basis_surfaces.clear();
-
         }
 
         return reform_correlation_surface_generators(

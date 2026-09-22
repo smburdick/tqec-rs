@@ -19,8 +19,8 @@ mod types;
 mod utils;
 
 fn main() {
-    // basic_all_test();
-    benchmark(10);
+    basic_all_test();
+    // benchmark(10);
 }
 
 fn basic_all_test() {
