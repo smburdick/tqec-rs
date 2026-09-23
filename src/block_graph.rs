@@ -87,14 +87,14 @@ impl BlockGraph {
                             if to_return.ports.contains_key(annotation) {
                                 return Err("Duplicate port.".to_string());
                             }
-                            to_return.ports.insert(annotation.to_string(), pos.clone());
+                            to_return.ports.insert(annotation.to_string(), pos);
                         } else if kind.contains("Y") {
                             cube_kind = CubeKind::YHalfCube;
                         } else {
                             cube_kind = CubeKind::ZX(ZXCube::from_str(&kind)?);
                         }
 
-                        let cube: Cube = Cube::new(cube_kind, pos.clone());
+                        let cube: Cube = Cube::new(cube_kind, pos);
                         let idx = to_return.graph.add_node(cube);
                         to_return.node_indices.insert(pos, idx);
                         cubeIdToNodeIndex.insert(cube_id.to_string(), idx);

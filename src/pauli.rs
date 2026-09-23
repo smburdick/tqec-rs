@@ -32,7 +32,7 @@ impl Pauli {
                 _ => *self,
             }
         } else {
-            return self.clone();
+            return *self;
         }
     }
 
@@ -53,7 +53,7 @@ impl Pauli {
         *self as usize
     }
 
-    pub fn from_basis_set(bases: HashSet<Basis>) -> Self {
+    pub fn from_basis_set(bases: &HashSet<Basis>) -> Self {
         Self::usize_to_pauli(
             (bases.contains(&Basis::X) as usize) | ((bases.contains(&Basis::Z) as usize) << 1),
         )

@@ -102,9 +102,10 @@ pub struct CorrelationSurface {
 
 impl CorrelationSurface {
     pub fn new(edges: HashSet<ZXEdge>) -> Self {
+        let graph_view = Self::graph_view(&edges);
         Self {
-            edges: edges.clone(),
-            graph_view: Self::graph_view(edges),
+            edges: edges,
+            graph_view: graph_view,
         }
     }
 
@@ -146,13 +147,11 @@ impl CorrelationSurface {
             .iter()
             .map(|port| {
                 let _bases = view.get(port);
-                let bases: HashSet<Basis>;
                 if _bases.is_none() {
-                    bases = HashSet::new();
+                    Pauli::I.to_string()
                 } else {
-                    bases = (*_bases.unwrap()).clone();
+                    Pauli::from_basis_set(_bases.unwrap()).to_string()
                 }
-                Pauli::from_basis_set(bases).to_string()
             })
             .collect::<String>()
     }
@@ -204,7 +203,7 @@ impl CorrelationSurface {
     }
 
     fn graph_view(
-        _edges: HashSet<ZXEdge>,
+        _edges: &HashSet<ZXEdge>,
     ) -> (
         HashMap<Position3D, HashMap<Position3D, Vec<ZXEdge>>>,
         HashMap<Position3D, HashSet<Basis>>,
@@ -215,7 +214,7 @@ impl CorrelationSurface {
             //&& _edges.iter().next().is_self_loop() {
             let edge = _edges.iter().next().expect("Single node CS missing edge");
             let pos = edge.u.position;
-            edges.insert(pos, HashMap::from([(pos, vec![edge.clone()])]));
+            edges.insert(pos, HashMap::from([(pos, vec![*edge])]));
             bases.insert(pos, HashSet::from([edge.u.basis]));
         } else {
             for edge in _edges.iter() {
@@ -225,13 +224,13 @@ impl CorrelationSurface {
                     .or_default()
                     .entry(v)
                     .or_default()
-                    .push(edge.clone());
+                    .push(*edge);
                 edges
                     .entry(v)
                     .or_default()
                     .entry(u)
                     .or_default()
-                    .push(edge.clone());
+                    .push(*edge);
                 bases.entry(u).or_default().insert(edge.u.basis);
                 bases.entry(v).or_default().insert(edge.v.basis);
             }
@@ -367,7 +366,7 @@ impl CorrelationSurfaceGenerator {
             let mut val = HashMap::new();
 
             for (n, pauli) in neighbors.iter() {
-                let mut res_pauli = pauli.clone();
+                let mut res_pauli = *pauli;
 
                 for cs in others {
                     let neighbor_row = cs.mapping.get(v).expect("vertex missing from mapping");
@@ -520,49 +519,51 @@ pub fn expand_correlation_surface_to_node(
 }
 
 pub fn reform_correlation_surface_generators<F>(
-    correlation_surfaces: impl Iterator<Item = CorrelationSurfaceGenerator>,
+    correlation_surfaces: impl Iterator<Item = SharedSurface>,
     signature_func: F,
     stabilizer_basis: &mut HashMap<usize, (usize, usize)>,
-    basis_surfaces: Vec<&CorrelationSurfaceGenerator>,
+    basis_surfaces: Vec<SharedSurface>,
     construct_new_surfaces: bool,     // = True,
     num_new_surfaces_needed: usize,   // | None = None,
     num_basis_surfaces_needed: usize, //int | None = None,
-) -> (
-    Vec<CorrelationSurfaceGenerator>,
-    Vec<CorrelationSurfaceGenerator>,
-)
+) -> (Vec<SharedSurface>, Vec<CorrelationSurfaceGenerator>)
 where
     F: Fn(&CorrelationSurfaceGenerator) -> usize,
 {
-    let mut new_basis_surfaces: Vec<CorrelationSurfaceGenerator> =
+    let mut _new_basis_surfaces: Vec<SharedSurface> =
         basis_surfaces.iter().map(|cs| (*cs).clone()).collect();
+    let mut _new_surfaces: Vec<CorrelationSurfaceGenerator> = Vec::new();
 
-    let mut new_surfaces: Vec<CorrelationSurfaceGenerator> = Vec::new();
     for cs in correlation_surfaces {
-        let x = signature_func(&cs);
+        let x = signature_func(&cs.borrow());
         let indices = solve_linear_system(stabilizer_basis, x, true);
         if indices.is_err() {
-            new_basis_surfaces.push(cs);
+            _new_basis_surfaces.push(cs);
             if num_basis_surfaces_needed > 0 && basis_surfaces.len() > num_basis_surfaces_needed {
                 break;
             }
             continue;
         }
         if construct_new_surfaces {
-            let _bscs = indices
+            let _bscs: Vec<_> = indices
                 .unwrap()
                 .iter()
-                .map(|k| &new_basis_surfaces[*k])
-                .chain(once(&cs))
+                .map(|k| Rc::clone(&_new_basis_surfaces[*k]))
+                .chain(once(cs))
                 .collect();
-            let _new_cs = CorrelationSurfaceGenerator::xor(_bscs);
-            new_surfaces.push(_new_cs);
-            if num_new_surfaces_needed > 0 && new_surfaces.len() >= num_new_surfaces_needed {
+
+            let borrowed: Vec<_> = _bscs.iter().map(|cs| cs.borrow()).collect();
+
+            let input: Vec<&CorrelationSurfaceGenerator> = borrowed.iter().map(|r| &**r).collect();
+
+            let _new_cs = CorrelationSurfaceGenerator::xor(input);
+            _new_surfaces.push(_new_cs);
+            if num_new_surfaces_needed > 0 && _new_surfaces.len() >= num_new_surfaces_needed {
                 break;
             }
         }
     }
-    (new_basis_surfaces, new_surfaces)
+    (_new_basis_surfaces, _new_surfaces)
 }
 
 pub fn find_correlation_surfaces_from_leaf(
@@ -590,6 +591,8 @@ pub fn find_correlation_surfaces_from_leaf(
     let open_leaves = leaves.get(&Pauli::I).expect("msg").clone();
     leaves.remove_entry(&Pauli::I);
 
+    let mut _cs_result: Vec<CorrelationSurfaceGenerator> = Vec::new();
+
     if leaves.values().map(|m| m.len()).sum::<usize>() > 0 {
         let sigfunc = |cs: &CorrelationSurfaceGenerator| {
             concat_ints_as_bits(
@@ -603,7 +606,7 @@ pub fn find_correlation_surfaces_from_leaf(
                 leaves.values().map(|l| l.len() as usize),
             )
         };
-        correlation_surfaces = reform_correlation_surface_generators(
+        _cs_result = reform_correlation_surface_generators(
             correlation_surfaces.into_iter(),
             sigfunc,
             &mut HashMap::new(),
@@ -613,19 +616,24 @@ pub fn find_correlation_surfaces_from_leaf(
             0,
         )
         .1
+    } else {
+        _cs_result = correlation_surfaces
+            .into_iter()
+            .map(|cs| cs.borrow().clone())
+            .collect();
     }
 
     if !open_leaves.is_empty() {
         let mut basis: HashMap<usize, (usize, usize)> = HashMap::new();
         construct_basis(
             &mut basis,
-            &correlation_surfaces,
+            &_cs_result,
             |cs: &CorrelationSurfaceGenerator| {
                 cs.signature_at_nodes(open_leaves.iter().map(|l| *l), |p: Pauli| p.value(), 2)
             },
         );
         normalize_basis(&mut basis, true);
-        correlation_surfaces = basis
+        _cs_result = basis
             .values()
             .map(|(_, mask)| {
                 let indices = int_to_bit_indices(*mask);
@@ -633,11 +641,11 @@ pub fn find_correlation_surfaces_from_leaf(
                     CorrelationSurfaceGenerator::xor(
                         indices
                             .iter()
-                            .map(|i| correlation_surfaces.get(*i).expect("msg"))
+                            .map(|i| _cs_result.get(*i).expect("msg"))
                             .collect(),
                     )
                 } else {
-                    correlation_surfaces
+                    _cs_result
                         .get(*indices.get(0).expect("msg"))
                         .expect("msg")
                         .clone()
@@ -646,7 +654,7 @@ pub fn find_correlation_surfaces_from_leaf(
             .collect();
     }
 
-    correlation_surfaces
+    _cs_result
 }
 
 pub fn construct_basis<F>(
