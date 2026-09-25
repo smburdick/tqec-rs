@@ -16,6 +16,7 @@ mod pauli;
 mod positioned;
 mod types;
 mod utils;
+mod plaquette;
 
 fn main() {
     basic_all_test();

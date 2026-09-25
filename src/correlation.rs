@@ -14,10 +14,7 @@ use crate::{
 use core::fmt;
 use itertools::Itertools;
 use std::{
-    cell::RefCell,
-    collections::{HashMap, HashSet},
-    iter::{self, once, repeat},
-    rc::Rc,
+    cell::RefCell, collections::{HashMap, HashSet}, iter::{self, once, repeat}, rc::Rc, sync::Arc,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, PartialOrd)]
@@ -247,7 +244,7 @@ impl fmt::Display for CorrelationSurface {
 
 #[derive(Clone, Debug)]
 pub struct CorrelationSurfaceGenerator {
-    pub mapping: HashMap<V, Rc<HashMap<V, Pauli>>>,
+    pub mapping: Rc<HashMap<V, Rc<HashMap<V, Pauli>>>>,
 }
 
 pub enum ValidationResult {
@@ -259,7 +256,7 @@ pub enum ValidationResult {
 impl CorrelationSurfaceGenerator {
     pub fn new() -> Self {
         Self {
-            mapping: HashMap::new(),
+            mapping: Rc::new(HashMap::new()),
         }
     }
 
@@ -269,9 +266,9 @@ impl CorrelationSurfaceGenerator {
 
     pub fn add_pauli_to_edge(&mut self, edge: (V, V), pauli: Pauli, edge_is_hadamard: bool) {
         let (u, v) = edge;
+        let mapping = Rc::make_mut(&mut self.mapping);
         for (from, to, p) in [(u, v, pauli), (v, u, pauli.flipped(edge_is_hadamard))] {
-            let inner = self
-                .mapping
+            let inner = mapping
                 .entry(from)
                 .or_insert_with(|| Rc::new(HashMap::new()));
             Rc::make_mut(inner).insert(to, p);
@@ -362,7 +359,9 @@ impl CorrelationSurfaceGenerator {
             .split_first()
             .expect("xor requires at least one circuit");
 
-        for (v, neighbors) in &first.mapping {
+        let res_map = Rc::make_mut(&mut result.mapping);
+
+        for (v, neighbors) in first.mapping.iter() {
             let mut val = HashMap::new();
 
             for (n, pauli) in neighbors.iter() {
@@ -377,7 +376,7 @@ impl CorrelationSurfaceGenerator {
                 }
                 val.insert(*n, res_pauli);
             }
-            result.mapping.insert(*v, Rc::new(val));
+            res_map.insert(*v, Rc::new(val));
         }
         result
     }
@@ -445,34 +444,35 @@ pub fn generate_valid_local_paulis(
     passthrough_parity: bool,
     num_unconnected_neighbors: usize,
     generate_all: bool,
-) -> Vec<Vec<Pauli>> {
-    let mut result: Vec<Vec<Pauli>> = Vec::new();
-    let unconnected_neighbors = 0..num_unconnected_neighbors;
+) -> impl Iterator<Item = Vec<Pauli>> {
     let combined_pauli = broadcast_pauli.xor(node_basis);
-    if generate_all {
-        let passthru_nodes = ((passthrough_parity as usize)..(unconnected_neighbors.len() + 1))
-            .step_by(2)
-            .flat_map(|n| unconnected_neighbors.clone().combinations(n));
 
-        result = passthru_nodes
-            .map(|p| {
-                unconnected_neighbors
-                    .clone()
-                    .map(|n| {
-                        if p.contains(&n) {
-                            combined_pauli
-                        } else {
-                            broadcast_pauli
-                        }
-                    })
-                    .collect()
-            })
-            .collect();
-    } else {
-        todo!("Not implemented yet")
-    }
-    result
+    assert!(generate_all, "generate_all=false is not implemented");
+
+    let neighbors = 0..num_unconnected_neighbors;
+
+    ((passthrough_parity as usize)..=num_unconnected_neighbors)
+        .step_by(2)
+        .flat_map(move |n| neighbors.clone().combinations(n))
+        .map(move |combination| {
+            let mut result = Vec::with_capacity(num_unconnected_neighbors);
+
+            let mut combination_iter = combination.into_iter();
+            let mut selected = combination_iter.next();
+
+            for neighbor in 0..num_unconnected_neighbors {
+                if selected == Some(neighbor) {
+                    result.push(combined_pauli);
+                    selected = combination_iter.next();
+                } else {
+                    result.push(broadcast_pauli);
+                }
+            }
+
+            result
+        })
 }
+
 
 pub fn expand_correlation_surface_to_node(
     correlation_surface: SharedSurface,
@@ -480,8 +480,8 @@ pub fn expand_correlation_surface_to_node(
     passthrough_parity: bool,
     node: V,
     node_basis: Pauli,
-    unconnected_neighbors: Vec<V>, // TODO: combine unconnected_neighbors + edges_are_hadamard into single structure.
-    edges_are_hadamard: Vec<bool>,
+    unconnected_neighbors: Rc<Vec<V>>, // TODO: combine unconnected_neighbors + edges_are_hadamard into single structure.
+    edges_are_hadamard: Rc<Vec<bool>>,
     generate_all: bool,
     always_copy: bool,
 ) -> impl Iterator<Item = SharedSurface> {

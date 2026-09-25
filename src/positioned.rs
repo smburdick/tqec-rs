@@ -1,8 +1,5 @@
 use std::{
-    cell::RefCell,
-    collections::{HashMap, HashSet},
-    iter::{Peekable, once},
-    rc::Rc,
+    cell::RefCell, collections::{HashMap, HashSet}, iter::once, rc::Rc,
 };
 
 use itertools::Itertools;
@@ -277,10 +274,10 @@ impl PositionedZX {
                     .map(|&a| a)
                     .collect::<Vec<V>>();
 
-                let unconnected_neighbors: Vec<V> = graph
+                let unconnected_neighbors: Rc<Vec<V>> = Rc::new(graph
                     .neighbors(current_node)
                     .filter(|v| !connected_neighbors.contains(v))
-                    .collect();
+                    .collect());
 
                 let mut boundary_nodes: Vec<V> = explored_leaves
                     .iter()
@@ -405,28 +402,27 @@ impl PositionedZX {
                     }
                 }
 
-                let edges_are_hadamard: Vec<bool> = unconnected_neighbors
+                let edges_are_hadamard: Rc<Vec<bool>> = Rc::new(unconnected_neighbors
                     .iter()
                     .map(|n| Self::is_hadamard(graph, (current_node, *n)))
-                    .collect();
+                    .collect());
 
                 correlation_surfaces = Box::new(
                     valid_surfaces
                         .into_iter()
-                        .map(move |(cs, broadcast, parity)| {
+                        .flat_map(move |(cs, broadcast, parity)| {
                             expand_correlation_surface_to_node(
                                 cs,
                                 broadcast,
                                 parity,
                                 current_node,
                                 passthrough_basis,
-                                unconnected_neighbors.clone(),
-                                edges_are_hadamard.clone(),
+                                Rc::clone(&unconnected_neighbors),
+                                Rc::clone(&edges_are_hadamard),
                                 true,
                                 false,
                             )
                         })
-                        .flatten(),
                 );
 
                 unexplored_neighbors
