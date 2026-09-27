@@ -25,15 +25,17 @@ impl Pauli {
     }
 
     pub fn flipped(&self, condition: bool) -> Self {
-        if condition {
+        let result = if condition {
             match self {
                 Pauli::X => Pauli::Z,
                 Pauli::Z => Pauli::X,
                 _ => *self,
             }
         } else {
-            return *self;
-        }
+            *self
+        };
+        // println!("{}/{} flipped = {}", self.to_string(), condition, result.to_string());
+        result
     }
 
     pub fn to_string(&self) -> String {
@@ -63,7 +65,7 @@ impl Pauli {
         (*self as usize) | (other as usize) == (*self as usize)
     }
 
-    fn usize_to_pauli(u: usize) -> Pauli {
+    pub fn usize_to_pauli(u: usize) -> Pauli {
         match u {
             0b00 => Pauli::I,
             0b01 => Pauli::X,

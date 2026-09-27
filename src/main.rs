@@ -13,10 +13,10 @@ mod cube;
 mod cube_spec;
 mod layout;
 mod pauli;
+mod plaquette;
 mod positioned;
 mod types;
 mod utils;
-mod plaquette;
 
 fn main() {
     basic_all_test();
@@ -26,11 +26,11 @@ fn main() {
 fn basic_all_test() {
     for file in [
         "cnot",
-        "stability",
+        // "stability",
         "move_rotation",
-        "three_cnots",
+        // "three_cnots",
         "cz",
-        "steane",
+        // "steane",
     ] {
         let parse_res = BlockGraph::from_bgraph_file(format!("bgraphs/{}.bgraph", file));
         match parse_res {

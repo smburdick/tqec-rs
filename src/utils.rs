@@ -27,9 +27,9 @@ pub fn solve_linear_system(
     basis: &mut HashMap<usize, (usize, usize)>,
     x: usize,
     update_basis: bool,
-) -> Result<Vec<usize>, &'static str> {
-    // TODO: decide on the integer types (usize or u64)
-    let mut mask: usize = 1 << basis.keys().len();
+) -> Result<Vec<usize>, &'static str> { // TODO: incorrect masks seem to be being stored?
+
+    let mut mask: usize = 1usize << basis.len();
     let mut _x = x;
     while _x != 0 {
         let highest_bit: usize = usize_bit_len(_x) - 1;

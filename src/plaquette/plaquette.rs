@@ -1,13 +1,9 @@
-
-
-
+use crate::plaquette::qubit::PlaquetteQubits;
 
 struct Plaquette {
-
     name: String,
-    // qubits: PlaquetteQubits,
+    qubits: PlaquetteQubits,
     // circuit: ScheduledCircuit,
     // mergeable_info: HashSet<String>,
     // debug_info: PlaquetteDebugInfo
-
 }

@@ -14,8 +14,10 @@ use crate::{
 use core::fmt;
 use itertools::Itertools;
 use std::{
-    cell::RefCell, collections::{HashMap, HashSet}, iter::{self, once, repeat}, rc::Rc, sync::Arc,
+    cell::RefCell, collections::{HashMap, HashSet}, iter::{self, once, repeat}, ops::Index, rc::Rc, sync::Arc,
 };
+
+use indexmap::IndexMap;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, PartialOrd)]
 pub struct ZXNode {
@@ -244,7 +246,7 @@ impl fmt::Display for CorrelationSurface {
 
 #[derive(Clone, Debug)]
 pub struct CorrelationSurfaceGenerator {
-    pub mapping: Rc<HashMap<V, Rc<HashMap<V, Pauli>>>>,
+    pub mapping: IndexMap<V, Rc<IndexMap<V, Pauli>>>,
 }
 
 pub enum ValidationResult {
@@ -256,7 +258,7 @@ pub enum ValidationResult {
 impl CorrelationSurfaceGenerator {
     pub fn new() -> Self {
         Self {
-            mapping: Rc::new(HashMap::new()),
+            mapping: IndexMap::new(),
         }
     }
 
@@ -266,11 +268,12 @@ impl CorrelationSurfaceGenerator {
 
     pub fn add_pauli_to_edge(&mut self, edge: (V, V), pauli: Pauli, edge_is_hadamard: bool) {
         let (u, v) = edge;
-        let mapping = Rc::make_mut(&mut self.mapping);
+
         for (from, to, p) in [(u, v, pauli), (v, u, pauli.flipped(edge_is_hadamard))] {
-            let inner = mapping
+            let inner = self
+                .mapping
                 .entry(from)
-                .or_insert_with(|| Rc::new(HashMap::new()));
+                .or_insert_with(|| Rc::new(IndexMap::new()));
             Rc::make_mut(inner).insert(to, p);
         }
     }
@@ -324,18 +327,13 @@ impl CorrelationSurfaceGenerator {
     }
 
     pub fn paulis_at_nodes(&self, nodes: impl Iterator<Item = V>) -> impl Iterator<Item = Pauli> {
-        nodes
-            .into_iter()
-            .map(|v| {
-                self.mapping
-                    .get(&v)
-                    .expect(&format!("Missing mapping for vertex {}", v))
-                    .values()
-                    .copied()
-                    .collect::<Vec<_>>()
-                    .into_iter()
-            })
-            .flatten()
+        nodes.into_iter().flat_map(|v| {
+            self.mapping
+                .get(&v)
+                .expect(&format!("Missing mapping for vertex {}", v))
+                .values()
+                .copied()
+        })
     }
 
     pub fn signature_at_nodes<F>(
@@ -359,24 +357,18 @@ impl CorrelationSurfaceGenerator {
             .split_first()
             .expect("xor requires at least one circuit");
 
-        let res_map = Rc::make_mut(&mut result.mapping);
-
         for (v, neighbors) in first.mapping.iter() {
-            let mut val = HashMap::new();
-
+            let mut val: IndexMap<usize, Pauli> = IndexMap::new();
             for (n, pauli) in neighbors.iter() {
                 let mut res_pauli = *pauli;
-
                 for cs in others {
                     let neighbor_row = cs.mapping.get(v).expect("vertex missing from mapping");
-
                     let other_pauli = neighbor_row.get(n).expect("neighbor missing from mapping");
-
                     res_pauli = res_pauli.xor(*other_pauli);
                 }
                 val.insert(*n, res_pauli);
             }
-            res_map.insert(*v, Rc::new(val));
+            result.mapping.insert(*v, Rc::new(val));
         }
         result
     }
@@ -393,7 +385,7 @@ impl CorrelationSurfaceGenerator {
             set.insert(edge);
             return CorrelationSurface::new(set);
         }
-        let mut span: Vec<ZXEdge> = Vec::new();
+        let mut span: HashSet<ZXEdge> = HashSet::new();
         let mut zx_nodes: HashMap<(usize, Basis), ZXNode> = HashMap::new();
         let bases = vec![Basis::X, Basis::Z];
         for (u, v, _) in graph.edges() {
@@ -405,8 +397,6 @@ impl CorrelationSurfaceGenerator {
                 .expect(&format!("Pauli corresponding to {} -> {}", u, v));
             let pauli_v = *self.mapping.get(&v).unwrap().get(&u).unwrap();
             let edge_is_hadamard = graph.edge_is_hadamard((u, v));
-            let pos_u = graph.get_cube_at(u).unwrap().position();
-            let pos_v = graph.get_cube_at(v).unwrap().position();
             let _vec = [Pauli::X, Pauli::Z];
             let product: Vec<(Pauli, Pauli)> = _vec
                 .iter()
@@ -420,6 +410,8 @@ impl CorrelationSurfaceGenerator {
                     let basis_u = bases[(xz_u.value() >> 1) as usize];
                     let basis_v = bases[(xz_v.value() >> 1) as usize];
 
+                    let pos_u = graph.get_cube_at(u).unwrap().position();
+                    let pos_v = graph.get_cube_at(v).unwrap().position();
                     let node_u = zx_nodes
                         .entry((u, basis_u))
                         .or_insert_with(|| ZXNode::new(pos_u, basis_u))
@@ -430,11 +422,11 @@ impl CorrelationSurfaceGenerator {
                         .or_insert_with(|| ZXNode::new(pos_v, basis_v))
                         .clone();
 
-                    span.push(ZXEdge::new(node_u, node_v).sorted());
+                    span.insert(ZXEdge::new(node_u, node_v).sorted());
                 }
             }
         }
-        CorrelationSurface::new(span.into_iter().collect::<HashSet<ZXEdge>>())
+        CorrelationSurface::new(span)
     }
 }
 
@@ -472,7 +464,6 @@ pub fn generate_valid_local_paulis(
             result
         })
 }
-
 
 pub fn expand_correlation_surface_to_node(
     correlation_surface: SharedSurface,

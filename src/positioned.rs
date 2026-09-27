@@ -1,5 +1,8 @@
 use std::{
-    cell::RefCell, collections::{HashMap, HashSet}, iter::once, rc::Rc,
+    cell::RefCell,
+    collections::{HashMap, HashSet},
+    iter::once,
+    rc::Rc,
 };
 
 use itertools::Itertools;
@@ -30,16 +33,23 @@ pub struct PositionedZX {
 pub type SharedSurface = Rc<RefCell<CorrelationSurfaceGenerator>>;
 
 impl PositionedZX {
+
     pub fn from_block_graph(block_graph: &BlockGraph) -> Self {
+
         let mut graph = Graph::new();
         let mut zx2bg: HashMap<V, Cube> = HashMap::new();
         let mut bg2zx: HashMap<Cube, V> = HashMap::new();
-        for cube in block_graph.cubes() {
+
+        let mut cubes: Vec<&Cube> = block_graph.cubes();
+        cubes.sort_by_key(|cube| cube.position());
+
+        for cube in cubes {
             let (vt, phase) = PositionedZX::cube_to_zx(cube);
             let v: V = graph.add_vertex_with_phase(vt, phase);
-            zx2bg.insert(v, cube.clone());
-            bg2zx.insert(cube.clone(), v);
+            zx2bg.insert(v, *cube);
+            bg2zx.insert(*cube, v);
         }
+
         let pipes = block_graph.pipes();
         for pipe in pipes {
             let edge_type = if pipe.has_hadamard() {
@@ -105,7 +115,7 @@ impl PositionedZX {
             return Err("Must support spiders");
         }
         let mut toReturn = Vec::new();
-        // TODO: check if graph is single node
+
         if self.graph.num_vertices() == 1 {
             let v: V = self.graph.vertices().next().unwrap();
             let pos = self.positions.get(&v).unwrap().position();
@@ -122,6 +132,7 @@ impl PositionedZX {
             toReturn.push(CorrelationSurface::new(edges));
             return Ok(toReturn);
         }
+
         let leaves: Vec<V> = self
             .graph
             .vertices()
@@ -230,6 +241,7 @@ impl PositionedZX {
         graph: &Graph,
         leaf: V,
     ) -> Vec<SharedSurface> {
+
         let neighbor = graph.neighbors(leaf).next().unwrap();
         // correlation_surfaces owns the data of each surface so the rest have to be borrowed via references
         // other vectors used here are temporary.
@@ -250,13 +262,7 @@ impl PositionedZX {
 
         let mut frontier: Vec<V> = vec![neighbor];
         let mut explored_leaves: Vec<V> = vec![leaf];
-        let mut explored_nodes: HashSet<V> = HashSet::new();
-        explored_nodes.insert(leaf);
-
-        // These vectors gain ownership of the surfaces
-        let mut vector_basis: HashMap<usize, (usize, usize)> = HashMap::new();
-        let mut syndrome_basis: HashMap<usize, (usize, usize)> = HashMap::new();
-        let mut basis_surfaces: Vec<SharedSurface> = Vec::new();
+        let mut explored_nodes: HashSet<V> = HashSet::from([leaf]);
 
         let mut correlation_surface = correlation_surfaces.next().unwrap();
 
@@ -274,10 +280,12 @@ impl PositionedZX {
                     .map(|&a| a)
                     .collect::<Vec<V>>();
 
-                let unconnected_neighbors: Rc<Vec<V>> = Rc::new(graph
-                    .neighbors(current_node)
-                    .filter(|v| !connected_neighbors.contains(v))
-                    .collect());
+                let unconnected_neighbors: Rc<Vec<V>> = Rc::new(
+                    graph
+                        .neighbors(current_node)
+                        .filter(|v| !connected_neighbors.contains(v))
+                        .collect(),
+                );
 
                 let mut boundary_nodes: Vec<V> = explored_leaves
                     .iter()
@@ -291,12 +299,14 @@ impl PositionedZX {
 
                 let generating_set_sz: usize = boundary_nodes
                     .iter()
-                    .map(|n| map.get(&n).map_or(0, |inner| inner.len()))
+                    // .map(|n| map.get(n).map_or(0, |inner| inner.len()))
+                    .map(|n| map.get(n).expect("Missing correlation surface").len()) 
                     .sum();
+                   
 
                 let unexplored_neighbors: Vec<V> = unconnected_neighbors
                     .iter()
-                    .filter(|n| !map.contains_key(n))
+                    .filter(|n| !map.contains_key(*n))
                     .copied()
                     .collect();
 
@@ -309,8 +319,10 @@ impl PositionedZX {
                 // check if each correlation surface candidate satisfies broadcast and passthrough rules
                 // on the current node and is not a product of previously checked valid correlation surfaces
 
-                let mut invalid_surfaces: Vec<(SharedSurface, usize)> = Vec::new();
                 let mut valid_surfaces: Vec<(SharedSurface, Pauli, bool)> = Vec::new();
+                let mut invalid_surfaces: Vec<SharedSurface> = Vec::new();
+                let mut syndromes: Vec<usize> = Vec::new();
+                let mut vector_basis: HashMap<usize, (usize, usize)> = HashMap::new();
 
                 for cs in once(Rc::clone(&correlation_surface)).chain(correlation_surfaces) {
                     match cs.borrow().validate_node(
@@ -319,7 +331,8 @@ impl PositionedZX {
                         unconnected_neighbors.len() > 0,
                     ) {
                         ValidationResult::Single(u) => {
-                            invalid_surfaces.push((Rc::clone(&cs), u));
+                            invalid_surfaces.push(Rc::clone(&cs));
+                            syndromes.push(u);
                             continue;
                         }
                         ValidationResult::Pair(pauli, parity) => {
@@ -328,10 +341,8 @@ impl PositionedZX {
                                 pauli_value,
                                 2,
                             );
-
                             if solve_linear_system(&mut vector_basis, x, true).is_err() {
                                 valid_surfaces.push((Rc::clone(&cs), pauli, parity));
-
                                 if vector_basis.len() == generating_set_sz {
                                     break;
                                 }
@@ -341,89 +352,94 @@ impl PositionedZX {
                     }
                 }
 
-                // try to fix local constraint violations by XORing with other invalid surfaces
+                let mut syndrome_basis: HashMap<usize, (usize, usize)> = HashMap::new();
+                let mut basis_surfaces: Vec<SharedSurface> = Vec::new();
 
-                for (cs, syndrome) in invalid_surfaces {
+                // try to fix local constraint violations by XORing with other invalid surfaces
+                for (cs, syndrome) in invalid_surfaces.iter().zip(syndromes) {
                     if vector_basis.len() == generating_set_sz {
                         break;
                     }
-
-                    let all_one = (1 << connected_neighbors.len()) - 1;
+                    let all_one = (1usize << connected_neighbors.len()) - 1;
                     for (j, target) in [syndrome ^ all_one, syndrome].iter().enumerate() {
-                        let indices = solve_linear_system(&mut syndrome_basis, *target, j != 0);
+
+                        let indices = solve_linear_system(&mut syndrome_basis, *target, j == 1);
 
                         if indices.is_err() {
                             if j == 1 {
-                                basis_surfaces.push(cs.clone());
+                                basis_surfaces.push(Rc::clone(&cs));
                             }
                             continue;
                         }
 
-                        if indices.is_ok() {
-                            let borrowed: Vec<_> = indices
-                                .unwrap()
-                                .iter()
-                                .map(|k| basis_surfaces.get(*k).unwrap().borrow())
-                                .chain(once(correlation_surface.borrow()))
-                                .collect();
+                        let borrowed: Vec<_> = indices
+                            .unwrap()
+                            .iter()
+                            .map(|k| basis_surfaces.get(*k).unwrap().borrow())
+                            .chain(once(correlation_surface.borrow()))
+                            .collect();
 
-                            let input = borrowed.iter().map(|r| &**r).collect();
+                        let input = borrowed.iter().map(|r| &**r).collect();
 
-                            let new_correlation_surface = CorrelationSurfaceGenerator::xor(input);
+                        let new_correlation_surface = CorrelationSurfaceGenerator::xor(input);
 
-                            if solve_linear_system(
-                                &mut vector_basis,
-                                new_correlation_surface.signature_at_nodes(
-                                    boundary_nodes.clone().into_iter(),
-                                    pauli_value,
-                                    1,
-                                ),
-                                true,
-                            )
-                            .is_ok()
-                            {
-                                match new_correlation_surface.validate_node(
-                                    current_node,
-                                    passthrough_basis,
-                                    unconnected_neighbors.len() > 0,
-                                ) {
-                                    ValidationResult::Pair(pauli, parity) => {
-                                        valid_surfaces.push((
-                                            Rc::new(RefCell::new(new_correlation_surface)),
-                                            pauli,
-                                            parity,
-                                        ));
-                                    }
-                                    _ => {}
+                        if solve_linear_system(
+                            &mut vector_basis,
+                            new_correlation_surface.signature_at_nodes(
+                                boundary_nodes.clone().into_iter(),
+                                pauli_value,
+                                2,
+                            ),
+                            true,
+                        )
+                        .is_err()
+                        {
+                            match new_correlation_surface.validate_node(
+                                current_node,
+                                passthrough_basis,
+                                unconnected_neighbors.len() > 0,
+                            ) {
+                                ValidationResult::Pair(pauli, parity) => {
+                                    valid_surfaces.push((
+                                        Rc::new(RefCell::new(new_correlation_surface)),
+                                        pauli,
+                                        parity,
+                                    ));
+                                } // this is the only possible outcome for a valid surface
+                                ValidationResult::Single(_) => {
+                                    panic!("Valid surface must be valid!");
                                 }
-                                break;
+                                ValidationResult::None => {
+                                    // panic!("Can't happen either");
+                                }
                             }
+                            break;
                         }
                     }
                 }
 
-                let edges_are_hadamard: Rc<Vec<bool>> = Rc::new(unconnected_neighbors
-                    .iter()
-                    .map(|n| Self::is_hadamard(graph, (current_node, *n)))
-                    .collect());
-
-                correlation_surfaces = Box::new(
-                    valid_surfaces
-                        .into_iter()
-                        .flat_map(move |(cs, broadcast, parity)| {
-                            expand_correlation_surface_to_node(
-                                cs,
-                                broadcast,
-                                parity,
-                                current_node,
-                                passthrough_basis,
-                                Rc::clone(&unconnected_neighbors),
-                                Rc::clone(&edges_are_hadamard),
-                                true,
-                                false,
-                            )
-                        })
+                let edges_are_hadamard: Rc<Vec<bool>> = Rc::new(
+                    unconnected_neighbors
+                        .iter()
+                        .map(|n| Self::is_hadamard(graph, (current_node, *n)))
+                        .collect(),
                 );
+
+                correlation_surfaces = Box::new(valid_surfaces.into_iter().flat_map(
+                    move |(cs, broadcast, parity)| {
+                        expand_correlation_surface_to_node(
+                            cs,
+                            broadcast,
+                            parity,
+                            current_node,
+                            passthrough_basis,
+                            Rc::clone(&unconnected_neighbors),
+                            Rc::clone(&edges_are_hadamard),
+                            true,
+                            false,
+                        )
+                    },
+                ));
 
                 unexplored_neighbors
                     .iter()
@@ -437,9 +453,6 @@ impl PositionedZX {
 
                 explored_nodes.insert(current_node);
 
-                vector_basis.clear();
-                syndrome_basis.clear();
-                basis_surfaces.clear();
             }
             let _correlation_surface = correlation_surfaces.next();
             if _correlation_surface.is_none() {
