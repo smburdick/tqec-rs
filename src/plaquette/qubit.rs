@@ -1,12 +1,10 @@
-use std::collections::HashMap;
-
-use crate::types::coord;
+use crate::types::Coord;
 use derive_new::new;
 
 #[derive(new)]
 pub struct GridQubit {
-    x: coord,
-    y: coord,
+    x: Coord,
+    y: Coord,
 }
 
 #[derive(new)]

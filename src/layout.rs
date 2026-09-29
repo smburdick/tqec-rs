@@ -1,11 +1,11 @@
-use crate::types::coord;
+use crate::types::Coord;
 
 pub struct LayoutPosition2D {
-    x: coord,
-    y: coord,
+    x: Coord,
+    y: Coord,
 }
 
 pub struct LayoutPosition3D {
     spatial_position: LayoutPosition2D,
-    z: coord,
+    z: Coord,
 }

@@ -6,7 +6,7 @@ use crate::{
     block_graph::BlockGraph,
     correlation::{CorrelationSurface, ZXEdge},
     cube::{Basis, Cube, CubeKind, Direction3D, Pipe, Position3D},
-    types::coord,
+    types::Coord,
 };
 
 bitflags! {
@@ -36,7 +36,7 @@ impl SpatialArms {
         spatial_arms
     }
 
-    pub fn get_map_from_arm_shift() -> HashMap<SpatialArms, (coord, coord)> {
+    pub fn get_map_from_arm_shift() -> HashMap<SpatialArms, (Coord, Coord)> {
         HashMap::from([
             (Self::UP, (0, -1)),
             (Self::RIGHT, (1, 0)),
@@ -142,7 +142,7 @@ impl AbstractObservable {
     // I elected to encode this in the graph itself, so any reference to pipe objects
     // must include that.
     // Which is already the case when AbstractObservable is produced anyway ...
-    pub fn slice_at_z(&self, graph: BlockGraph, z: coord) -> Self {
+    pub fn slice_at_z(&self, graph: BlockGraph, z: Coord) -> Self {
         let top_readout_cubes = self
             .top_readout_cubes
             .iter()
@@ -216,7 +216,7 @@ pub fn compile_correlation_surface_to_abstract_observable(
     }
 
     let pg = block_graph.to_zx_graph();
-    let valid = pg.correlation_surface_is_valid(&correlation_surface); // TODO: make use of this result ...
+    let _valid = pg.correlation_surface_is_valid(&correlation_surface); // TODO: make use of this result ...
 
     let mut endpoints_to_edge: HashMap<[Position3D; 2], Vec<&ZXEdge>> = HashMap::new(); // FIXME: keys need to be hash sets for lookup later.
 
@@ -229,7 +229,7 @@ pub fn compile_correlation_surface_to_abstract_observable(
 
     let mut top_readout_cubes: HashSet<CubeWithArms> = HashSet::new();
     let mut top_readout_pipes: HashSet<PipeWithArms> = HashSet::new();
-    let mut bottom_stabilizer_pipes: HashSet<PipeWithArms> = HashSet::new();
+    let bottom_stabilizer_pipes: HashSet<PipeWithArms> = HashSet::new();
     let mut temporal_hadamard_pipes: HashSet<PipeWithObservableBasis> = HashSet::new();
 
     for pos in correlation_surface.positions() {

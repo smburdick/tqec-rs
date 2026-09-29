@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 
+use indexmap::IndexMap;
 use quizx::{
     graph::{GraphLike, V},
     vec_graph::Graph,
@@ -24,11 +24,10 @@ where
 }
 
 pub fn solve_linear_system(
-    basis: &mut HashMap<usize, (usize, usize)>,
+    basis: &mut IndexMap<usize, (usize, usize)>,
     x: usize,
     update_basis: bool,
-) -> Result<Vec<usize>, &'static str> { // TODO: incorrect masks seem to be being stored?
-
+) -> Result<Vec<usize>, &'static str> {
     let mut mask: usize = 1usize << basis.len();
     let mut _x = x;
     while _x != 0 {

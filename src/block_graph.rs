@@ -1,7 +1,7 @@
 use itertools::Itertools;
 use petgraph::{
-    Directed, Direction, Graph,
-    graph::{DiGraph, EdgeIndex, NodeIndex, UnGraph},
+    Directed, Graph,
+    graph::{DiGraph, EdgeIndex, NodeIndex},
 };
 use std::{
     collections::HashMap,
@@ -14,7 +14,7 @@ use std::{
 use crate::{
     correlation::CorrelationSurface,
     cube::{Cube, CubeKind, Pipe, Position3D, ZXCube},
-    types::coord,
+    types::Coord,
 };
 use crate::{cube::Direction3D, positioned::PositionedZX};
 
@@ -57,7 +57,7 @@ impl BlockGraph {
                     PIPES,
                 }
                 let mut parse_mode: ParseMode = ParseMode::HEADER;
-                let mut cubeIdToNodeIndex: HashMap<String, NodeIndex> = HashMap::new();
+                let mut cube_id_to_node_idx: HashMap<String, NodeIndex> = HashMap::new();
                 for line in reader.lines() {
                     let _line = line.expect("Missing line");
                     if _line.len() == 1 || _line.is_empty() {
@@ -74,9 +74,9 @@ impl BlockGraph {
                         let items: Vec<&str> = _line.split(";").collect();
 
                         let cube_id: &str = items[0];
-                        let x_coord: coord = items[1].parse().expect("X coordinate");
-                        let y_coord: coord = items[2].parse().expect("Y coordinate");
-                        let z_coord: coord = items[3].parse().expect("Z coordinate");
+                        let x_coord: Coord = items[1].parse().expect("X coordinate");
+                        let y_coord: Coord = items[2].parse().expect("Y coordinate");
+                        let z_coord: Coord = items[3].parse().expect("Z coordinate");
                         let kind: String = items[4].to_uppercase();
                         let annotation: &str = items[5]; // TODO: how is this used?
                         let pos: Position3D = Position3D::new(x_coord, y_coord, z_coord);
@@ -97,7 +97,7 @@ impl BlockGraph {
                         let cube: Cube = Cube::new(cube_kind, pos);
                         let idx = to_return.graph.add_node(cube);
                         to_return.node_indices.insert(pos, idx);
-                        cubeIdToNodeIndex.insert(cube_id.to_string(), idx);
+                        cube_id_to_node_idx.insert(cube_id.to_string(), idx);
                     } else if parse_mode == ParseMode::PIPES {
                         let items: Vec<&str> = _line.split(";").collect();
                         let cube1_id: &str = items[0];
@@ -108,8 +108,8 @@ impl BlockGraph {
                             return Err("Pipe must have an opening.".to_string());
                         }
 
-                        let cube1_idx = cubeIdToNodeIndex.get(cube1_id).unwrap();
-                        let cube2_idx = cubeIdToNodeIndex.get(cube2_id).unwrap();
+                        let cube1_idx = cube_id_to_node_idx.get(cube1_id).unwrap();
+                        let cube2_idx = cube_id_to_node_idx.get(cube2_id).unwrap();
 
                         if to_return.graph.contains_edge(*cube1_idx, *cube2_idx) {
                             return Err("Invalid".to_string());
@@ -285,7 +285,7 @@ impl BlockGraph {
                         _ => {}
                     }
                     let cube_color = zx_cube.get_basis_along(direction);
-                    for ortho_dir in direction.orthogonal_directions() {
+                    for _ortho_dir in direction.orthogonal_directions() {
                         match pipes_by_direction.get(&direction) {
                             Some(_pipes) => {
                                 for pipe in _pipes {

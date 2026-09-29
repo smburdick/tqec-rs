@@ -1,5 +1,4 @@
-use crate::types::coord;
-use itertools::Position;
+use crate::types::Coord;
 use rand::random;
 use std::{fmt, iter::once, str::FromStr};
 
@@ -44,25 +43,25 @@ impl fmt::Display for Basis {
 
 #[derive(PartialEq, Eq, Hash, Debug, Copy, Clone, Ord, PartialOrd)]
 pub struct Position3D {
-    x: coord,
-    y: coord,
-    z: coord,
+    x: Coord,
+    y: Coord,
+    z: Coord,
 }
 
 impl Position3D {
-    pub fn new(x: coord, y: coord, z: coord) -> Position3D {
+    pub fn new(x: Coord, y: Coord, z: Coord) -> Position3D {
         Self { x: x, y: y, z: z }
     }
-    pub fn x(&self) -> coord {
+    pub fn x(&self) -> Coord {
         self.x
     }
-    pub fn y(&self) -> coord {
+    pub fn y(&self) -> Coord {
         self.y
     }
-    pub fn z(&self) -> coord {
+    pub fn z(&self) -> Coord {
         self.z
     }
-    pub fn shift_by(&self, dx: coord, dy: coord, dz: coord) -> Self {
+    pub fn shift_by(&self, dx: Coord, dy: Coord, dz: Coord) -> Self {
         Self {
             x: self.x + dx,
             y: self.y + dy,

@@ -8,13 +8,16 @@ use crate::{
     cube::{Basis, Position3D},
     pauli::Pauli,
     positioned::{PositionedZX, SharedSurface},
-    types::coord,
+    types::Coord,
     utils::{concat_ints_as_bits, int_to_bit_indices, solve_linear_system, zx_to_pauli},
 };
 use core::fmt;
 use itertools::Itertools;
 use std::{
-    cell::RefCell, collections::{HashMap, HashSet}, iter::{self, once, repeat}, ops::Index, rc::Rc, sync::Arc,
+    cell::RefCell,
+    collections::{HashMap, HashSet},
+    iter::{self, once, repeat},
+    rc::Rc,
 };
 
 use indexmap::IndexMap;
@@ -73,14 +76,13 @@ impl ZXEdge {
         (&self.u, &self.v)
     }
 
-    pub fn get_basis(&self, position: Position3D) -> Basis {
-        let u_pos = self.u.position;
-        let v_pos = self.v.position;
-        match position {
-            u_pos => self.u.basis,
-            v_pos => self.v.basis,
-            _ => panic!("Invalid basis"),
+    pub fn get_basis(&self, position: Position3D) -> Result<Basis, &'static str> {
+        if position == self.u.position {
+            return Ok(self.u.basis);
+        } else if position == self.v.position {
+            return Ok(self.v.basis);
         }
+        Err("Invalid position")
     }
 }
 
@@ -176,7 +178,7 @@ impl CorrelationSurface {
             .collect::<HashSet<ZXEdge>>()
     }
 
-    pub fn shift_by(&self, dx: coord, dy: coord, dz: coord) -> Self {
+    pub fn shift_by(&self, dx: Coord, dy: Coord, dz: Coord) -> Self {
         let mut nodes: HashMap<ZXNode, ZXNode> = HashMap::new();
         for position in self.positions() {
             let new_position =
@@ -249,6 +251,7 @@ pub struct CorrelationSurfaceGenerator {
     pub mapping: IndexMap<V, Rc<IndexMap<V, Pauli>>>,
 }
 
+#[derive(Debug)]
 pub enum ValidationResult {
     None,
     Single(usize),
@@ -285,6 +288,7 @@ impl CorrelationSurfaceGenerator {
         has_unconnected_neighbors: bool,
     ) -> ValidationResult {
         let paulis: Vec<Pauli> = self.paulis_at_nodes(iter::once(node)).collect();
+
         if paulis.len() == 0 {
             return ValidationResult::None;
         }
@@ -474,7 +478,7 @@ pub fn expand_correlation_surface_to_node(
     unconnected_neighbors: Rc<Vec<V>>, // TODO: combine unconnected_neighbors + edges_are_hadamard into single structure.
     edges_are_hadamard: Rc<Vec<bool>>,
     generate_all: bool,
-    always_copy: bool,
+    _always_copy: bool,
 ) -> impl Iterator<Item = SharedSurface> {
     generate_valid_local_paulis(
         node_basis,
@@ -485,16 +489,8 @@ pub fn expand_correlation_surface_to_node(
     )
     .into_iter()
     .enumerate()
-    .map(move |(i, out_paulis)| {
-        let new_correlation_surface = if i == 0 && !always_copy {
-            // Python's:
-            // new_correlation_surface = correlation_surface
-            Rc::clone(&correlation_surface)
-        } else {
-            // Python's:
-            // new_correlation_surface = copy(correlation_surface)
-            Rc::new(RefCell::new(correlation_surface.borrow().clone()))
-        };
+    .map(move |(_i, out_paulis)| {
+        let new_correlation_surface = Rc::new(RefCell::new(correlation_surface.borrow().clone()));
         {
             let mut surface = new_correlation_surface.borrow_mut();
             for ((n, pauli), edge_is_hadamard) in unconnected_neighbors
@@ -512,7 +508,7 @@ pub fn expand_correlation_surface_to_node(
 pub fn reform_correlation_surface_generators<F>(
     correlation_surfaces: impl Iterator<Item = SharedSurface>,
     signature_func: F,
-    stabilizer_basis: &mut HashMap<usize, (usize, usize)>,
+    stabilizer_basis: &mut IndexMap<usize, (usize, usize)>,
     basis_surfaces: Vec<SharedSurface>,
     construct_new_surfaces: bool,     // = True,
     num_new_surfaces_needed: usize,   // | None = None,
@@ -561,7 +557,7 @@ pub fn find_correlation_surfaces_from_leaf(
     zx_graph: &Graph,
     leaf: V,
 ) -> Vec<CorrelationSurfaceGenerator> {
-    let mut correlation_surfaces =
+    let correlation_surfaces =
         PositionedZX::find_correlation_surface_generating_set_from_leaf(zx_graph, leaf);
 
     let mut leaves: HashMap<Pauli, Vec<V>> = HashMap::new();
@@ -600,7 +596,7 @@ pub fn find_correlation_surfaces_from_leaf(
         _cs_result = reform_correlation_surface_generators(
             correlation_surfaces.into_iter(),
             sigfunc,
-            &mut HashMap::new(),
+            &mut IndexMap::new(),
             Vec::new(),
             true,
             0,
@@ -615,7 +611,7 @@ pub fn find_correlation_surfaces_from_leaf(
     }
 
     if !open_leaves.is_empty() {
-        let mut basis: HashMap<usize, (usize, usize)> = HashMap::new();
+        let mut basis: IndexMap<usize, (usize, usize)> = IndexMap::new();
         construct_basis(
             &mut basis,
             &_cs_result,
@@ -649,18 +645,18 @@ pub fn find_correlation_surfaces_from_leaf(
 }
 
 pub fn construct_basis<F>(
-    basis: &mut HashMap<usize, (usize, usize)>,
+    basis: &mut IndexMap<usize, (usize, usize)>,
     correlation_surfaces: &Vec<CorrelationSurfaceGenerator>,
     func: F,
 ) where
     F: Fn(&CorrelationSurfaceGenerator) -> usize,
 {
     correlation_surfaces.iter().for_each(|cs| {
-        solve_linear_system(basis, func(cs), true);
+        let _ = solve_linear_system(basis, func(cs), true);
     });
 }
 
-pub fn normalize_basis(basis: &mut HashMap<usize, (usize, usize)>, in_place: bool) {
+pub fn normalize_basis(basis: &mut IndexMap<usize, (usize, usize)>, in_place: bool) {
     if !in_place {
         todo!("Not implemented yet.")
     }

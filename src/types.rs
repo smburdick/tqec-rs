@@ -1,1 +1,1 @@
-pub type coord = i32;
+pub type Coord = i64;

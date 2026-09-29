@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use crate::abstract_observable::SpatialArms;
 use crate::block_graph::BlockGraph;
 use crate::cube::{Cube, CubeKind};
-use crate::types::coord;
+use crate::types::Coord;
 
 pub struct CubeSpec {
     kind: CubeKind,
@@ -15,7 +15,7 @@ impl CubeSpec {
     pub fn from_cube(
         cube: Cube,
         graph: &BlockGraph,
-        spatial_up_or_down_pipe_slices: HashSet<coord>,
+        spatial_up_or_down_pipe_slices: HashSet<Coord>,
     ) -> Self {
         Self {
             kind: cube.kind(),
