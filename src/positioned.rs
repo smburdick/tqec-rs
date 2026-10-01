@@ -537,9 +537,11 @@ impl PositionedZX {
                 }
                 _ => {
                     let mut counts: HashMap<Basis, usize> = HashMap::new();
-                    edges
-                        .iter()
-                        .for_each(|edge| *counts.entry(edge.get_basis(pos).expect("Basis")).or_insert(0) += 1);
+                    edges.iter().for_each(|edge| {
+                        *counts
+                            .entry(edge.get_basis(pos).expect("Basis"))
+                            .or_insert(0) += 1
+                    });
                     let v_basis = pauli.to_basis().expect("basis");
                     let t = 0..self.graph.incident_edges(v).count();
                     if !t.contains(counts.get(&v_basis.flipped()).unwrap()) {

@@ -1,8 +1,6 @@
 use std::time::Instant;
 
-use crate::{
-    block_graph::BlockGraph, correlation::CorrelationSurface,
-};
+use crate::{block_graph::BlockGraph, correlation::CorrelationSurface};
 
 mod abstract_observable;
 mod block_graph;
@@ -15,6 +13,7 @@ mod plaquette;
 mod positioned;
 mod types;
 mod utils;
+mod circuit;
 
 fn main() {
     basic_all_test();
