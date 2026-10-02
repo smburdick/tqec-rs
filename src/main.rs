@@ -4,6 +4,7 @@ use crate::{block_graph::BlockGraph, correlation::CorrelationSurface};
 
 mod abstract_observable;
 mod block_graph;
+mod circuit;
 mod correlation;
 mod cube;
 mod cube_spec;
@@ -13,7 +14,6 @@ mod plaquette;
 mod positioned;
 mod types;
 mod utils;
-mod circuit;
 
 fn main() {
     basic_all_test();

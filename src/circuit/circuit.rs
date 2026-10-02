@@ -5,5 +5,5 @@ use crate::circuit::schedule::Schedule;
 pub struct ScheduledCircuit {
     moments: Vec<Moment>,
     schedule: Schedule,
-    qubit_map: QubitMap
+    qubit_map: QubitMap,
 }

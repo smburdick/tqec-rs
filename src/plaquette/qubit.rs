@@ -70,5 +70,8 @@ pub fn count_qubit_accesses(circuit: &Circuit) -> HashMap<u64, u64> {
 }
 
 pub fn get_used_qubit_indices(circuit: &Circuit) -> HashSet<u64> {
-    count_qubit_accesses(circuit).keys().copied().collect::<HashSet<u64>>()
+    count_qubit_accesses(circuit)
+        .keys()
+        .copied()
+        .collect::<HashSet<u64>>()
 }

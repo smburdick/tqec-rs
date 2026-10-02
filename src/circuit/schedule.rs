@@ -1,9 +1,5 @@
-
-
 pub struct Schedule {
-    data: Vec<usize>
+    data: Vec<usize>,
 }
 
-impl Schedule {
-    
-}
+impl Schedule {}
